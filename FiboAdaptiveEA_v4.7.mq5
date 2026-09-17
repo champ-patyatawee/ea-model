@@ -1,30 +1,28 @@
 //+------------------------------------------------------------------+
-//| FiboAdaptiveEA_v4.2.mq5                                            |
-//| Structural Fibonacci Pullback EA                                 |
+//| FiboAdaptiveEA_v4.7.mq5                                            |
+//| Fibo Sniper: high-frequency fade entries + precise exits         |
 //|                                                                  |
-//| v4.2 changes:
-//| - Structural BOS + HH/HL / LH/LL validation before Fibonacci
-//| - Searches for the most recent VALID structural impulse that is actually
-//|   being retraced NOW (v3 could find an old impulse and then reject)
-//| - Impulse quality / efficiency / freshness filters
-//| - Reaction candle must touch the Fibonacci zone
-//| - One trade per structural impulse
-//| - Broker stop/freeze level validation
-//| - Original risk is stored in position comment for stable R logic
-//| - Debug logging explains why setups are rejected
-//|
-//| v4.21 fix (Exness XAUUSDm: 0 trades, silent journal):
-//| - Spread gate ATR-based (InpMaxSpreadATR=0.15), digit-agnostic.
-//|   Fixed 120-point cap = $1.20 on 2-digit IUX but $0.12 on 3-digit
-//|   Exness -> blocked every tick. Entry/exit logic UNCHANGED.
-//| - Throttled gate diagnostics (GateMsg).
+//| v4.7 = v4.6 fade with the entry tap OPEN (target 3-8 trades/day):
+//| - Reaction 2.0 / body 0.1 / no close requirement
+//| - Zone 0.382-0.66 + deep 0.66-0.786, session filter OFF
+//| - Efficiency 0.35, max touches 8
+//| - Sharper exits: SL 1.0 ATR, TP extreme/mid, BE 1.0R/+0.1,
+//|   trail 2.0R/1.5 ATR, time exit 120 min (fast turnover)
+//| - Fade ON (evidence: 4-month fade test). Everything else = v4.6.
 //+------------------------------------------------------------------+
 #property strict
-#property version "4.21"
+#property version "4.70"
 
 #include <Trade/Trade.mqh>
 
 CTrade trade;
+
+enum ENUM_TP_MODE
+  {
+   TP_AT_EXTREME=0,
+   TP_AT_MID=1,
+   TP_R_MULT=2
+  };
 
 enum ENUM_DIRECTION
   {
@@ -61,14 +59,31 @@ struct Impulse
   };
 
 int      g_atrHandle=INVALID_HANDLE;
+int      g_atrSlowHandle=INVALID_HANDLE;
 datetime g_lastBar=0;
 datetime g_day=0;
 double   g_dayStartEquity=0.0;
 int      g_consecutiveLosses=0;
 
+// Partial-take state (MaxPositions=1 so a single slot is enough).
+ulong    g_partialTicket=0;
+bool     g_partialDone=false;
+
+// Zone touch counter for the currently tracked impulse.
+datetime g_touchA=0;
+datetime g_touchB=0;
+int      g_touchN=0;
+
+// MFE/MAE tracking for the single live position (diagnostic).
+ulong    g_mfeTicket=0;
+double   g_mfeR=0.0;
+double   g_maeR=0.0;
+int      g_mfeProf=-1;
+
 // Prevent repeated entries from the same structural impulse.
-datetime g_lastTradedImpulseA=0;
-datetime g_lastTradedImpulseB=0;
+// v4.3: remember last 20 impulses (v4.2 remembered only 1).
+datetime g_tradedA[];
+datetime g_tradedB[];
 
 //====================================================================
 // INPUTS
@@ -77,10 +92,13 @@ input group "Core"
 input long   InpMagic                 = 20260916;
 input ENUM_TIMEFRAMES InpTF           = PERIOD_M5;
 input double InpRiskPercent           = 0.50;
-input double InpMinRR                 = 1.30;
+input double InpMinRR                 = 0.30;
 input int    InpMaxPositions          = 1;
 input bool   InpDebug                 = true;
 input bool   InpForceMinLot            = true;
+input double InpMaxLotRiskPercent     = 10.0;
+input bool   InpUseMfeLog             = true;
+input bool   InpFadeMode              = true;
 
 input group "Session"
 input bool   InpUseSessionFilter      = false;
@@ -93,18 +111,34 @@ input int    InpLookbackBars          = 150;
 input int    InpSwingLeft             = 2;
 input int    InpSwingRight            = 2;
 input double InpMinImpulseATR         = 1.20;
+input double InpMaxImpulseATR         = 4.00;
 input double InpTrendEfficiencyMin    = 0.35;
 input int    InpMaxImpulseAgeBars     = 30;
 input bool   InpRequireBOS            = true;
 input bool   InpRequireStructure      = true;
 
-input group "Fibonacci"
+input group "Volatility Regime (realtime)"
+input bool   InpUseVolGate           = true;
+input int    InpATRSlowPeriod        = 50;
+input double InpMaxVolRatio          = 2.00;
+input double InpMinVolRatio          = 0.50;
+
+input group "Fibonacci Profiles (realtime)"
 input double InpEntryFibMin           = 0.382;
-input double InpEntryFibMax           = 0.618;
-input double InpDeepFib               = 0.786;
-input double InpSLBufferATR           = 0.10;
-input double InpTPExtension            = 1.618;
-input bool   InpAllowDeepEntry        = true;
+input double InpEntryFibMax           = 0.66;
+input bool   InpUseDeepProfile        = true;
+input double InpDeepFibMin            = 0.66;
+input double InpDeepFibMax            = 0.786;
+input double InpDeepEffBelow          = 0.50;
+input double InpDeepVolAbove          = 1.50;
+input int    InpDeepTouchMin          = 3;
+input int    InpMaxTouches            = 8;
+input double InpDeepSL_ATR            = 2.00;
+
+input group "Adaptive Exits (R from entry)"
+input double InpSL_ATR                = 1.00;
+input ENUM_TP_MODE InpTPMode          = TP_AT_EXTREME;
+input double InpTP_R                  = 2.00;
 
 input group "Reaction"
 input double InpMinReactionScore      = 2.0;
@@ -115,12 +149,15 @@ input bool   InpRequireReactionClose  = false;
 input group "Position Management"
 input bool   InpUseBreakEven          = true;
 input double InpBreakEvenR            = 1.00;
-input double InpBreakEvenOffsetR      = 0.05;
+input double InpBreakEvenOffsetR      = 0.10;
 input bool   InpUseTrailing            = true;
-input double InpTrailStartR           = 1.50;
-input double InpTrailATR              = 1.00;
+input double InpTrailStartR           = 2.00;
+input double InpTrailATR              = 1.50;
+input bool   InpUsePartial            = true;
+input double InpPartialR              = 1.00;
+input double InpPartialPct            = 50.0;
 input bool   InpUseTimeExit           = true;
-input int    InpMaxHoldMinutes        = 180;
+input int    InpMaxHoldMinutes        = 120;
 
 input group "Daily Protection"
 input double InpDailyLossPercent      = 2.0;
@@ -138,21 +175,31 @@ int OnInit()
    if(g_atrHandle==INVALID_HANDLE)
       return(INIT_FAILED);
 
+   g_atrSlowHandle=iATR(_Symbol,InpTF,InpATRSlowPeriod);
+   if(g_atrSlowHandle==INVALID_HANDLE)
+     {
+      Print("WARNING: slow ATR unavailable, vol gate fail-open.");
+      // Non-fatal: vol gate will fail open without slow ATR.
+      g_atrSlowHandle=INVALID_HANDLE;
+     }
+
    ResetDailyState();
    return(INIT_SUCCEEDED);
-  }
+   }
 
 void OnDeinit(const int reason)
-  {
+   {
    if(g_atrHandle!=INVALID_HANDLE)
       IndicatorRelease(g_atrHandle);
-  }
+   if(g_atrSlowHandle!=INVALID_HANDLE)
+      IndicatorRelease(g_atrSlowHandle);
+   }
 
 //====================================================================
 // MAIN
 //====================================================================
 void OnTick()
-  {
+   {
    UpdateDailyState();
    ManagePositions();
 
@@ -170,6 +217,7 @@ void OnTick()
    if(!TradingAllowed(reason)) { GateMsg("BLOCKED Trading: "+reason); return; }
    if(!SessionAllowed())       { GateMsg("BLOCKED Session (UTC 7-17 filter)"); return; }
    if(!SpreadAllowed(atr))     { GateMsg("BLOCKED Spread (>max ATR ratio)"); return; }
+   if(!VolRegimeAllowed())     return;  // self-logging
    if(CountMyPositions()>=InpMaxPositions)
      {
       GateMsg("BLOCKED MaxPositions");
@@ -257,32 +305,32 @@ int FindCurrentSetup(double atr,double bid,double ask,Impulse &out)
          if(InpRequireStructure && !higherLow)
             continue;
 
-         if(range<InpMinImpulseATR*atr)
-            continue;
+          if(range<InpMinImpulseATR*atr)
+             continue;
 
-         int impulseAge=pivots[i].shift;
-         if(InpMaxImpulseAgeBars>0 && impulseAge>InpMaxImpulseAgeBars)
-            continue;
+          if(InpMaxImpulseATR>0 && range>InpMaxImpulseATR*atr)
+             continue;
 
-         if(iClose(_Symbol,InpTF,pivots[i].shift)<=
-            iClose(_Symbol,InpTF,pivots[i-1].shift))
-            continue;
+          int impulseAge=pivots[i].shift;
+          if(InpMaxImpulseAgeBars>0 && impulseAge>InpMaxImpulseAgeBars)
+             continue;
 
-         double efficiency=ImpulseEfficiency(pivots[i-1].shift,
-                                             pivots[i].shift);
-         if(efficiency<InpTrendEfficiencyMin)
-            continue;
+          if(iClose(_Symbol,InpTF,pivots[i].shift)<=
+             iClose(_Symbol,InpTF,pivots[i-1].shift))
+             continue;
 
-         double zoneHigh=high-range*InpEntryFibMin;
-         double zoneLow =high-range*InpEntryFibMax;
+          double efficiency=ImpulseEfficiency(pivots[i-1].shift,
+                                              pivots[i].shift);
+          if(efficiency<InpTrendEfficiencyMin)
+             continue;
 
-         if(InpAllowDeepEntry)
-            zoneLow=high-range*InpDeepFib;
+          double zoneHigh=high-range*InpEntryFibMin;
+          double zoneLow =high-range*InpEntryFibMax;
 
-         if(bid>=zoneLow && bid<=zoneHigh)
-           {
-            out.valid=true;
-            out.direction=DIR_BUY;
+          if(bid>=zoneLow && bid<=zoneHigh)
+            {
+             out.valid=true;
+             out.direction=DIR_BUY;
             out.low=low;
             out.high=high;
             out.lowShift=pivots[i-1].shift;
@@ -328,50 +376,50 @@ int FindCurrentSetup(double atr,double bid,double ask,Impulse &out)
          if(InpRequireStructure && !lowerHigh)
             continue;
 
-         if(range<InpMinImpulseATR*atr)
-            continue;
+          if(range<InpMinImpulseATR*atr)
+             continue;
 
-         int impulseAge=pivots[i].shift;
-         if(InpMaxImpulseAgeBars>0 && impulseAge>InpMaxImpulseAgeBars)
-            continue;
+          if(InpMaxImpulseATR>0 && range>InpMaxImpulseATR*atr)
+             continue;
 
-         if(iClose(_Symbol,InpTF,pivots[i].shift)>=
-            iClose(_Symbol,InpTF,pivots[i-1].shift))
-            continue;
+          int impulseAge=pivots[i].shift;
+          if(InpMaxImpulseAgeBars>0 && impulseAge>InpMaxImpulseAgeBars)
+             continue;
 
-         double efficiency=ImpulseEfficiency(pivots[i-1].shift,
-                                             pivots[i].shift);
-         if(efficiency<InpTrendEfficiencyMin)
-            continue;
+          if(iClose(_Symbol,InpTF,pivots[i].shift)>=
+             iClose(_Symbol,InpTF,pivots[i-1].shift))
+             continue;
 
-         double zoneLow =low+range*InpEntryFibMin;
-         double zoneHigh=low+range*InpEntryFibMax;
+          double efficiency=ImpulseEfficiency(pivots[i-1].shift,
+                                              pivots[i].shift);
+          if(efficiency<InpTrendEfficiencyMin)
+             continue;
 
-         if(InpAllowDeepEntry)
-            zoneHigh=low+range*InpDeepFib;
+          double zoneLow =low+range*InpEntryFibMin;
+          double zoneHigh=low+range*InpEntryFibMax;
 
-         if(ask>=zoneLow && ask<=zoneHigh)
-           {
-            out.valid=true;
-            out.direction=DIR_SELL;
-            out.low=low;
-            out.high=high;
-            out.lowShift=pivots[i].shift;
-            out.highShift=pivots[i-1].shift;
-            out.lowTime=pivots[i].time;
-            out.highTime=pivots[i-1].time;
+          if(ask>=zoneLow && ask<=zoneHigh)
+            {
+             out.valid=true;
+             out.direction=DIR_SELL;
+             out.low=low;
+             out.high=high;
+             out.lowShift=pivots[i].shift;
+             out.highShift=pivots[i-1].shift;
+             out.lowTime=pivots[i].time;
+             out.highTime=pivots[i-1].time;
 
-            if(InpDebug)
-               Print("STRUCTURE SELL: ",
-                     "BOS=",bos ? "true" : "false",
-                     " LH=",lowerHigh ? "true" : "false",
-                     " rangeATR=",DoubleToString(range/atr,2),
-                     " efficiency=",DoubleToString(efficiency,2),
-                     " age=",impulseAge,
-                     " FibZone=",DoubleToString(zoneLow,2),
-                     "-",DoubleToString(zoneHigh,2));
+             if(InpDebug)
+                Print("STRUCTURE SELL: ",
+                      "BOS=",bos ? "true" : "false",
+                      " LH=",lowerHigh ? "true" : "false",
+                      " rangeATR=",DoubleToString(range/atr,2),
+                      " efficiency=",DoubleToString(efficiency,2),
+                      " age=",impulseAge,
+                      " FibZone=",DoubleToString(zoneLow,2),
+                      "-",DoubleToString(zoneHigh,2));
 
-            return(DIR_SELL);
+             return(DIR_SELL);
            }
         }
      }
@@ -418,19 +466,68 @@ double ImpulseEfficiency(int olderShift,int newerShift)
   }
 
 //====================================================================
-// BUY
+// PROFILE SELECTOR (v4.5)
+//
+// 0 = Normal pullback (50-66%, TP at extreme)
+// 1 = Deep/chop     (66-78.6%, TP at mid-impulse, wider SL)
+// Deep triggers: weak efficiency, hot ATR ratio, or repeated touches
+// of the same zone (support going stale -> demand a discount).
+// Returns -1 when the zone is exhausted (touches > max).
+//====================================================================
+int SelectProfile(const Impulse &impulse,double efficiency,double atrRatio,
+                  double zoneLow,double zoneHigh,double closePrice)
+   {
+   if(impulse.lowTime==g_touchA && impulse.highTime==g_touchB)
+     {
+      if(closePrice>=zoneLow && closePrice<=zoneHigh)
+         g_touchN++;
+     }
+   else
+     {
+      g_touchA=impulse.lowTime;
+      g_touchB=impulse.highTime;
+      g_touchN=(closePrice>=zoneLow && closePrice<=zoneHigh) ? 1 : 0;
+     }
+
+   if(InpMaxTouches>0 && g_touchN>InpMaxTouches)
+     {
+      if(InpDebug)
+         Print("Exhausted zone: touches=",g_touchN);
+      return(-1);
+     }
+
+   if(!InpUseDeepProfile)
+      return(0);
+
+   if(efficiency<InpDeepEffBelow)
+      return(1);
+   if(InpDeepVolAbove>0 && atrRatio>InpDeepVolAbove)
+      return(1);
+   if(InpDeepTouchMin>0 && g_touchN>=InpDeepTouchMin)
+      return(1);
+
+   return(0);
+   }
+
+double AtrRatio(double atr)
+   {
+   double slow=GetSlowATR(1);
+   if(atr<=0.0) return(1.0);
+   if(slow<=0.0) return(1.0);
+   return(atr/slow);
+   }
+
+//====================================================================
+// BULLISH SETUP (v4.6: fade executes SHORT here — same zone, mirrored
+// reaction/SL/TP; InpFadeMode=false = original LONG)
 //====================================================================
 void EvaluateBuy(const Impulse &impulse,double atr,double ask,double bid)
-  {
+   {
    double range=impulse.high-impulse.low;
    if(range<=0.0) return;
 
-   double f786=impulse.high-range*InpDeepFib;
    double zoneHigh=impulse.high-range*InpEntryFibMin;
    double zoneLow =impulse.high-range*InpEntryFibMax;
-
-   if(InpAllowDeepEntry)
-      zoneLow=f786;
 
    if(bid<zoneLow || bid>zoneHigh)
       return;
@@ -439,41 +536,83 @@ void EvaluateBuy(const Impulse &impulse,double atr,double ask,double bid)
    if(AlreadyTradedImpulse(impulse))
       return;
 
-   double score=ReactionScore(true,atr,zoneLow,zoneHigh);
+   // Fade mirrors the reaction: expect continuation DOWN, not bounce UP.
+   double score=ReactionScore(!InpFadeMode,atr,zoneLow,zoneHigh);
    if(score<InpMinReactionScore)
       return;
 
+   double c=iClose(_Symbol,InpTF,1);
    if(InpRequireReactionClose)
      {
-      double c=iClose(_Symbol,InpTF,1);
       if(c<zoneLow || c>zoneHigh)
          return;
      }
 
-   double sl=MathMin(f786,impulse.low)-InpSLBufferATR*atr;
-   double tp=impulse.low+range*InpTPExtension;
-
-   if(tp<=ask || sl>=ask)
+   double eff=ImpulseEfficiency(impulse.lowShift,impulse.highShift);
+   int prof=SelectProfile(impulse,eff,AtrRatio(atr),zoneLow,zoneHigh,c);
+   if(prof<0)
       return;
 
-   if(OpenPosition(ORDER_TYPE_BUY,ask,sl,tp,"FiboV4.2 BUY"))
-      MarkImpulse(impulse);
-  }
+   if(prof==1)
+     {
+      zoneHigh=impulse.high-range*InpDeepFibMin;
+      zoneLow =impulse.high-range*InpDeepFibMax;
+      if(bid<zoneLow || bid>zoneHigh)
+         return;
+      if(InpRequireReactionClose && (c<zoneLow || c>zoneHigh))
+         return;
+     }
+
+   double slATR=(prof==1 ? InpDeepSL_ATR : InpSL_ATR);
+   double riskDist=slATR*atr;
+   double sl,tp;
+   string cm;
+
+   if(!InpFadeMode)
+     {
+      sl=ask-riskDist;
+      if(InpTPMode==TP_R_MULT)
+         tp=ask+InpTP_R*riskDist;
+      else if(prof==1 || InpTPMode==TP_AT_MID)
+         tp=(impulse.high+impulse.low)/2.0;
+      else
+         tp=impulse.high;
+      if(tp<=ask || sl>=ask)
+         return;
+      cm="FiboV4.7 BUY PROF="+IntegerToString(prof);
+      if(OpenPosition(ORDER_TYPE_BUY,ask,sl,tp,cm))
+         MarkImpulse(impulse);
+     }
+   else
+     {
+      // FADE: short the pullback, target the origin (reversal).
+      sl=bid+riskDist;
+      if(InpTPMode==TP_R_MULT)
+         tp=bid-InpTP_R*riskDist;
+      else if(prof==1)
+         tp=(impulse.high+impulse.low)/2.0;
+      else if(InpTPMode==TP_AT_MID)
+         tp=(impulse.high+impulse.low)/2.0;
+      else
+         tp=impulse.low;
+      if(tp>=bid || sl<=bid)
+         return;
+      cm="FiboV4.7 SELL-FADE PROF="+IntegerToString(prof);
+      if(OpenPosition(ORDER_TYPE_SELL,bid,sl,tp,cm))
+         MarkImpulse(impulse);
+     }
+   }
 
 //====================================================================
-// SELL
+// BEARISH SETUP (v4.6: fade executes LONG here)
 //====================================================================
 void EvaluateSell(const Impulse &impulse,double atr,double ask,double bid)
-  {
+   {
    double range=impulse.high-impulse.low;
    if(range<=0.0) return;
 
-   double f786=impulse.low+range*InpDeepFib;
    double zoneLow =impulse.low+range*InpEntryFibMin;
    double zoneHigh=impulse.low+range*InpEntryFibMax;
-
-   if(InpAllowDeepEntry)
-      zoneHigh=f786;
 
    if(ask<zoneLow || ask>zoneHigh)
       return;
@@ -481,26 +620,72 @@ void EvaluateSell(const Impulse &impulse,double atr,double ask,double bid)
    if(AlreadyTradedImpulse(impulse))
       return;
 
-   double score=ReactionScore(false,atr,zoneLow,zoneHigh);
+   bool wantBearish=!InpFadeMode;
+   double score=ReactionScore(!wantBearish,atr,zoneLow,zoneHigh);
    if(score<InpMinReactionScore)
       return;
 
+   double c=iClose(_Symbol,InpTF,1);
    if(InpRequireReactionClose)
      {
-      double c=iClose(_Symbol,InpTF,1);
       if(c<zoneLow || c>zoneHigh)
          return;
      }
 
-   double sl=MathMax(f786,impulse.high)+InpSLBufferATR*atr;
-   double tp=impulse.high-range*InpTPExtension;
-
-   if(tp>=bid || sl<=bid)
+   double eff=ImpulseEfficiency(impulse.highShift,impulse.lowShift);
+   int prof=SelectProfile(impulse,eff,AtrRatio(atr),zoneLow,zoneHigh,c);
+   if(prof<0)
       return;
 
-   if(OpenPosition(ORDER_TYPE_SELL,bid,sl,tp,"FiboV4.2 SELL"))
-      MarkImpulse(impulse);
-  }
+   if(prof==1)
+     {
+      zoneLow =impulse.low+range*InpDeepFibMin;
+      zoneHigh=impulse.low+range*InpDeepFibMax;
+      if(ask<zoneLow || ask>zoneHigh)
+         return;
+      if(InpRequireReactionClose && (c<zoneLow || c>zoneHigh))
+         return;
+     }
+
+   double slATR=(prof==1 ? InpDeepSL_ATR : InpSL_ATR);
+   double riskDist=slATR*atr;
+   double sl,tp;
+   string cm;
+
+   if(!InpFadeMode)
+     {
+      sl=bid+riskDist;
+      if(InpTPMode==TP_R_MULT)
+         tp=bid-InpTP_R*riskDist;
+      else if(prof==1 || InpTPMode==TP_AT_MID)
+         tp=(impulse.high+impulse.low)/2.0;
+      else
+         tp=impulse.low;
+      if(tp>=bid || sl<=bid)
+         return;
+      cm="FiboV4.7 SELL PROF="+IntegerToString(prof);
+      if(OpenPosition(ORDER_TYPE_SELL,bid,sl,tp,cm))
+         MarkImpulse(impulse);
+     }
+   else
+     {
+      // FADE: buy the pullback, target the origin (reversal).
+      sl=ask-riskDist;
+      if(InpTPMode==TP_R_MULT)
+         tp=ask+InpTP_R*riskDist;
+      else if(prof==1)
+         tp=(impulse.high+impulse.low)/2.0;
+      else if(InpTPMode==TP_AT_MID)
+         tp=(impulse.high+impulse.low)/2.0;
+      else
+         tp=impulse.high;
+      if(tp<=ask || sl>=ask)
+         return;
+      cm="FiboV4.7 BUY-FADE PROF="+IntegerToString(prof);
+      if(OpenPosition(ORDER_TYPE_BUY,ask,sl,tp,cm))
+         MarkImpulse(impulse);
+     }
+   }
 
 //====================================================================
 // REACTION
@@ -792,14 +977,27 @@ double CalculateRiskVolume(double stopDistance)
    // Normalize the risk-based volume DOWN to the broker volume step.
    double volume=MathFloor(calculatedVolume/step)*step;
 
-   // If the risk-based volume is below the broker minimum, optionally
-   // force the minimum lot so valid Fibo setups can actually trade.
-   if(volume<minVolume)
-     {
-      if(!InpForceMinLot)
-         return(0.0);
+    // If the risk-based volume is below the broker minimum, optionally
+    // force the minimum lot so valid Fibo setups can actually trade.
+    // v4.3: guard against over-risk on small accounts (Jul-2026: $100
+    // account took -$24 on 0.01 lot = 24% instead of 0.5%).
+    if(volume<minVolume)
+      {
+       if(!InpForceMinLot)
+          return(0.0);
 
-      volume=minVolume;
+       double actualRiskMoney=minVolume*moneyPerLot;
+       double actualPct=(equity>0.0 ? actualRiskMoney/equity*100.0 : 1000.0);
+       if(InpMaxLotRiskPercent>0 && actualPct>InpMaxLotRiskPercent)
+         {
+          if(InpDebug)
+             Print("Rejected: min lot over-risk. Actual=",
+                   DoubleToString(actualPct,2),"% > max ",
+                   DoubleToString(InpMaxLotRiskPercent,2),"%");
+          return(0.0);
+         }
+
+       volume=minVolume;
 
       if(InpDebug)
         {
@@ -895,6 +1093,9 @@ void ManagePositions()
 
       double r=profitDistance/initialRisk;
 
+      // v4.5 MFE/MAE diagnostic (no behavior change).
+      TrackMfe(ticket,r);
+
       if(InpUseTimeExit)
         {
          datetime openTime=(datetime)
@@ -904,6 +1105,26 @@ void ManagePositions()
            {
             trade.PositionClose(ticket);
             continue;
+           }
+        }
+
+      // v4.4 PARTIAL: bank InpPartialPct% at InpPartialR once per ticket.
+      if(InpUsePartial && !IsPartialDone(ticket) && r>=InpPartialR)
+        {
+         double vol=PositionGetDouble(POSITION_VOLUME);
+         double minVol=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
+         double closeVol=NormalizeDouble(vol*InpPartialPct/100.0,2);
+         if(closeVol>=minVol && vol-closeVol>=minVol)
+           {
+            if(trade.PositionClosePartial(ticket,closeVol))
+              {
+               g_partialTicket=ticket;
+               g_partialDone=true;
+               if(InpDebug)
+                  Print("PARTIAL closed ",DoubleToString(InpPartialPct,0),
+                        "% at ",DoubleToString(r,2),"R ticket=",ticket);
+               continue;
+              }
            }
         }
 
@@ -965,19 +1186,36 @@ double GetInitialRisk(ulong ticket,double open,double currentSL)
   }
 
 //====================================================================
-// IMPULSE STATE
+// IMPULSE STATE (v4.3: history of last 20, v4.2 kept only 1)
 //====================================================================
 bool AlreadyTradedImpulse(const Impulse &impulse)
-  {
-   return(impulse.lowTime==g_lastTradedImpulseA &&
-          impulse.highTime==g_lastTradedImpulseB);
-  }
+   {
+    int n=ArraySize(g_tradedA);
+    for(int i=0;i<n;i++)
+       if(impulse.lowTime==g_tradedA[i] && impulse.highTime==g_tradedB[i])
+          return(true);
+    return(false);
+   }
 
 void MarkImpulse(const Impulse &impulse)
-  {
-   g_lastTradedImpulseA=impulse.lowTime;
-   g_lastTradedImpulseB=impulse.highTime;
-  }
+   {
+    int n=ArraySize(g_tradedA);
+    ArrayResize(g_tradedA,n+1);
+    ArrayResize(g_tradedB,n+1);
+    g_tradedA[n]=impulse.lowTime;
+    g_tradedB[n]=impulse.highTime;
+    // Keep only the most recent 20.
+    if(ArraySize(g_tradedA)>20)
+      {
+       for(int i=0;i<20;i++)
+         {
+          g_tradedA[i]=g_tradedA[ArraySize(g_tradedA)-20+i];
+          g_tradedB[i]=g_tradedB[ArraySize(g_tradedB)-20+i];
+         }
+       ArrayResize(g_tradedA,20);
+       ArrayResize(g_tradedB,20);
+      }
+   }
 
 //====================================================================
 // SESSION / SPREAD / SAFETY
@@ -1001,7 +1239,7 @@ bool SessionAllowed()
   }
 
 // Throttled gate diagnostics: max 1 line/hour so silent blocks
-// become visible without log spam.
+// (the Exness 0-trade case) become visible without log spam.
 void GateMsg(string msg)
    {
    static datetime lastMsg=0;
@@ -1022,12 +1260,93 @@ void GateMsg(string msg)
 
 bool SpreadAllowed(double atr)
    {
-   // v4.21: ATR-based spread gate (digit-agnostic).
+   // v4.41: ATR-based spread gate (digit-agnostic).
+   // Old fixed 150-point cap silently blocked everything on 3-digit
+   // Exness pricing (same $ spread = 10x more points than 2-digit IUX).
    double ask=SymbolInfoDouble(_Symbol,SYMBOL_ASK);
    double bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
    if(ask<=0.0 || bid<=0.0 || atr<=0.0)
       return(false);
    return((ask-bid)<=InpMaxSpreadATR*atr);
+   }
+
+//====================================================================
+// VOL REGIME GATE (v4.4 realtime adaptive)
+//
+// Compares fast ATR(14) to slow ATR(50):
+//  ratio > MaxVolRatio -> volatility spike (news) -> stand aside
+//  ratio < MinVolRatio -> dead market (no fuel for 2R TP) -> stand aside
+// Fail-open when slow ATR is unavailable (e.g. short history).
+//====================================================================
+bool VolRegimeAllowed()
+   {
+   if(!InpUseVolGate)
+      return(true);
+
+   double fast=GetATR(1);
+   double slow=GetSlowATR(1);
+   if(fast<=0.0)
+      return(false);
+   if(slow<=0.0)
+      return(true);
+
+   double ratio=fast/slow;
+   if(InpMaxVolRatio>0 && ratio>InpMaxVolRatio)
+     {
+      GateMsg("BLOCKED VolGate spike: ATR ratio="+DoubleToString(ratio,2));
+      return(false);
+     }
+   if(InpMinVolRatio>0 && ratio<InpMinVolRatio)
+     {
+      GateMsg("BLOCKED VolGate dead: ATR ratio="+DoubleToString(ratio,2));
+      return(false);
+     }
+   return(true);
+   }
+
+// Partial state is per-ticket; reset once the ticket is gone.
+bool IsPartialDone(ulong ticket)
+   {
+   if(!g_partialDone)
+      return(false);
+   if(ticket!=g_partialTicket)
+      return(false);
+   if(!PositionSelectByTicket(ticket))
+     {
+      g_partialTicket=0;
+      g_partialDone=false;
+      return(false);
+     }
+   return(true);
+   }
+
+// v4.5: track max favorable/adverse excursion in R for the live ticket.
+// Profile is parsed from the position comment ("PROF=n").
+void TrackMfe(ulong ticket,double r)
+   {
+   if(!InpUseMfeLog)
+      return;
+   if(ticket!=g_mfeTicket)
+     {
+      g_mfeTicket=ticket;
+      g_mfeR=r;
+      g_maeR=r;
+      g_mfeProf=ParseProf();
+     }
+   else
+     {
+      if(r>g_mfeR) g_mfeR=r;
+      if(r<g_maeR) g_maeR=r;
+     }
+   }
+
+int ParseProf()
+   {
+   string comment=PositionGetString(POSITION_COMMENT);
+   int p=StringFind(comment,"PROF=");
+   if(p<0)
+      return(-1);
+   return((int)StringToInteger(StringSubstr(comment,p+5)));
    }
 
 bool TradingAllowed(string &reason)
@@ -1057,13 +1376,19 @@ bool TradingAllowed(string &reason)
       (g_dayStartEquity-equity)/g_dayStartEquity*100.0;
 
    if(dailyLoss>=InpDailyLossPercent)
+     {
+      reason="daily loss limit";
       return(false);
+     }
 
    if(g_consecutiveLosses>=InpMaxConsecutiveLosses)
+     {
+      reason="max consecutive losses";
       return(false);
+     }
 
    return(true);
-  }
+   }
 
 int CountMyPositions()
   {
@@ -1102,7 +1427,7 @@ bool IsNewBar()
   }
 
 double GetATR(int shift)
-  {
+   {
    if(g_atrHandle==INVALID_HANDLE)
       return(0.0);
 
@@ -1113,7 +1438,21 @@ double GetATR(int shift)
       return(0.0);
 
    return(buffer[0]);
-  }
+   }
+
+double GetSlowATR(int shift)
+   {
+   if(g_atrSlowHandle==INVALID_HANDLE)
+      return(0.0);
+
+   double buffer[];
+   ArraySetAsSeries(buffer,true);
+
+   if(CopyBuffer(g_atrSlowHandle,0,shift,1,buffer)!=1)
+      return(0.0);
+
+   return(buffer[0]);
+   }
 
 void ResetDailyState()
   {
@@ -1177,6 +1516,22 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
       g_consecutiveLosses++;
    else if(profit>0.0)
       g_consecutiveLosses=0;
-  }
+
+   // v4.5 MFE/MAE diagnostic per closed trade.
+   if(InpUseMfeLog)
+     {
+      ulong posId=(ulong)HistoryDealGetInteger(trans.deal,DEAL_POSITION_ID);
+      if(posId==g_mfeTicket && g_mfeProf>=0)
+         Print("MFELOG PROF=",g_mfeProf,
+               " MFE_R=",DoubleToString(g_mfeR,2),
+               " MAE_R=",DoubleToString(g_maeR,2),
+               " P/L=",DoubleToString(profit,2));
+      if(posId==g_mfeTicket)
+        {
+         g_mfeTicket=0;
+         g_mfeProf=-1;
+        }
+     }
+   }
 
 //+------------------------------------------------------------------+
