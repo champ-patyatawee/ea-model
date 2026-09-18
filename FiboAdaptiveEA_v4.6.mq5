@@ -30,6 +30,17 @@
 //|   - InpMaxConsecutiveLosses 3 -> 10 (daily $ cap governs, not streak)
 //| Daily-budget sim ($10k, 18 months, lot 0.02): mean +$5.3/day, 31% of days
 //| >= +$20, worst day ~ -$105, max losing streak 6.
+//| v4.83 regime-filter experiments (all DEFAULT OFF - they did not help):
+//|   - HTF EMA trend filter (InpUseHTFTrendFilter): skip fades against the
+//|     H1 EMA slope. Tested harmful: train net +2146 -> +435, OOS +326 ->
+//|     +128 (halves trades). The mean-reversion edge lives IN the trades
+//|     that fade the higher-timeframe trend, so filtering them kills it.
+//|   - Daily direction lock (InpUseDailyDirLock): after N losses in one
+//|     side, stop that side for the day. Tested neutral: N=2 train +2046 /
+//|     PF 1.19 / DD 3.87%, N=3 +2128 / PF 1.18; OOS +311 / +275 vs +326
+//|     baseline. No net gain - the heavy losing days are the cost of the
+//|     same behaviour that produces the winners.
+//| Conclusion: keep both OFF for max net; they are kept for future study.
 //|
 //| v4.7 fixes (post-mortem of 05-09 backtests):
 //|  1. FADE REGIME GATE: fade only CLEAN (efficient) impulses, i.e. require
@@ -55,7 +66,7 @@
 //| Tokyo session default OFF (matches the 7-17 UTC evidence window).
 //+------------------------------------------------------------------+
 #property strict
-#property version "4.82"
+#property version "4.83"
 
 #include <Trade/Trade.mqh>
 
@@ -104,11 +115,14 @@ struct Impulse
 
 int      g_atrHandle=INVALID_HANDLE;
 int      g_atrSlowHandle=INVALID_HANDLE;
+int      g_htfHandle=INVALID_HANDLE;
 datetime g_lastBar=0;
 datetime g_day=0;
 double   g_dayStartEquity=0.0;
 int      g_consecutiveLosses=0;
 bool     g_dailyLocked=false;
+int      g_dayLossLong=0;    // losing LONG positions closed today
+int      g_dayLossShort=0;   // losing SHORT positions closed today
 
 // Partial-take state (MaxPositions=1 so a single slot is enough).
 ulong    g_partialTicket=0;
@@ -173,6 +187,16 @@ input bool   InpRequireStructure      = true;
 input group "Fade Regime"
 input bool   InpUseFadeRegimeGate     = true;
 input double InpFadeMinEfficiency     = 0.40;
+
+input group "HTF Trend Filter"
+input bool   InpUseHTFTrendFilter     = false;
+input ENUM_TIMEFRAMES InpHTF_TF       = PERIOD_H1;
+input int    InpHTFEMA_Period         = 50;
+input int    InpHTFSlopeBars          = 6;
+
+input group "Daily Direction Lock"
+input bool   InpUseDailyDirLock       = false;
+input int    InpMaxDirLossesPerDay    = 3;
 
 input group "Volatility Regime (realtime)"
 input bool   InpUseVolGate           = true;
@@ -241,6 +265,10 @@ int OnInit()
       g_atrSlowHandle=INVALID_HANDLE;
      }
 
+   g_htfHandle=iMA(_Symbol,InpHTF_TF,InpHTFEMA_Period,0,MODE_EMA,PRICE_CLOSE);
+   if(g_htfHandle==INVALID_HANDLE)
+      Print("WARNING: HTF EMA unavailable, HTF filter fail-open.");
+
    ResetDailyState();
    return(INIT_SUCCEEDED);
    }
@@ -251,6 +279,8 @@ void OnDeinit(const int reason)
       IndicatorRelease(g_atrHandle);
    if(g_atrSlowHandle!=INVALID_HANDLE)
       IndicatorRelease(g_atrSlowHandle);
+   if(g_htfHandle!=INVALID_HANDLE)
+      IndicatorRelease(g_htfHandle);
    }
 
 //====================================================================
@@ -586,6 +616,36 @@ double AtrRatio(double atr)
    }
 
 //====================================================================
+// HTF TREND (v4.83)
+//
+// The heavy losing days were trend days: the EA faded an up impulse
+// (short) while the higher timeframe was rising, and each new pullback
+// looked the same before continuing. This returns the HTF trend from an
+// EMA slope so fades against an established HTF trend can be skipped.
+//   +1 = HTF up, -1 = HTF down, 0 = unknown/flat (fail-open)
+//====================================================================
+int HTFTrendState()
+  {
+   if(g_htfHandle==INVALID_HANDLE)
+      return(0);
+
+   int need=InpHTFSlopeBars+1;
+   if(need<2) need=2;
+
+   double e[];
+   ArraySetAsSeries(e,true);
+   if(CopyBuffer(g_htfHandle,0,0,need,e)!=need)
+      return(0);
+
+   double now=e[1];                 // last closed HTF bar
+   double then=e[InpHTFSlopeBars];
+
+   if(now>then) return(1);
+   if(now<then) return(-1);
+   return(0);
+  }
+
+//====================================================================
 // BULLISH SETUP (v4.6: fade executes SHORT here — same zone, mirrored
 // reaction/SL/TP; InpFadeMode=false = original LONG)
 //====================================================================
@@ -667,6 +727,22 @@ void EvaluateBuy(const Impulse &impulse,double atr,double ask,double bid)
      {
       // FADE: short the pullback. v4.7 default is an R-multiple target;
       // the impulse-origin target only applies in TP_AT_EXTREME mode.
+      // v4.83: skip shorting into an established HTF up-trend.
+      if(InpUseHTFTrendFilter && HTFTrendState()==1)
+        {
+         if(InpDebug)
+            Print("Skip fade: HTF up-trend, no short into it");
+         return;
+        }
+      // v4.83: reactive daily lock - stop shorting after N short losses today.
+      if(InpUseDailyDirLock && InpMaxDirLossesPerDay>0 &&
+         g_dayLossShort>=InpMaxDirLossesPerDay)
+        {
+         if(InpDebug)
+            Print("Skip short fade: daily short-loss limit (",
+                  g_dayLossShort,") reached");
+         return;
+        }
       sl=bid+riskDist;
       if(InpTPMode==TP_R_MULT)
          tp=bid-InpTP_R*riskDist;
@@ -762,6 +838,22 @@ void EvaluateSell(const Impulse &impulse,double atr,double ask,double bid)
      {
       // FADE: buy the pullback. v4.7 default is an R-multiple target;
       // the impulse-origin target only applies in TP_AT_EXTREME mode.
+      // v4.83: skip buying into an established HTF down-trend.
+      if(InpUseHTFTrendFilter && HTFTrendState()==-1)
+        {
+         if(InpDebug)
+            Print("Skip fade: HTF down-trend, no long into it");
+         return;
+        }
+      // v4.83: reactive daily lock - stop longing after N long losses today.
+      if(InpUseDailyDirLock && InpMaxDirLossesPerDay>0 &&
+         g_dayLossLong>=InpMaxDirLossesPerDay)
+        {
+         if(InpDebug)
+            Print("Skip long fade: daily long-loss limit (",
+                  g_dayLossLong,") reached");
+         return;
+        }
       sl=ask-riskDist;
       if(InpTPMode==TP_R_MULT)
          tp=ask+InpTP_R*riskDist;
@@ -1688,6 +1780,8 @@ void ResetDailyState()
    g_dayStartEquity=AccountInfoDouble(ACCOUNT_EQUITY);
    g_consecutiveLosses=0;
    g_dailyLocked=false;
+   g_dayLossLong=0;
+   g_dayLossShort=0;
   }
 
 void UpdateDailyState()
@@ -1735,7 +1829,16 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
       HistoryDealGetDouble(trans.deal,DEAL_COMMISSION);
 
    if(profit<0.0)
+     {
       g_consecutiveLosses++;
+      // v4.83 daily direction lock: count losses per position side.
+      // Closing deal type is opposite the position: BUY closes a SHORT.
+      long dtype=(long)HistoryDealGetInteger(trans.deal,DEAL_TYPE);
+      if(dtype==DEAL_TYPE_BUY)
+         g_dayLossShort++;
+      else if(dtype==DEAL_TYPE_SELL)
+         g_dayLossLong++;
+     }
    else if(profit>0.0)
       g_consecutiveLosses=0;
 
