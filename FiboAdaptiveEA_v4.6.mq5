@@ -66,7 +66,7 @@
 //| Tokyo session default OFF (matches the 7-17 UTC evidence window).
 //+------------------------------------------------------------------+
 #property strict
-#property version "4.83"
+#property version "4.85"
 
 #include <Trade/Trade.mqh>
 
@@ -160,6 +160,8 @@ input double InpMaxRiskMoneyPerTrade  = 30.0;
 input double InpFixedLot              = 0.02;
 input bool   InpUseMfeLog             = true;
 input bool   InpFadeMode              = true;
+input bool   InpRandomEntry           = false;
+input int    InpRandomEntryBars       = 12;
 
 input group "Sessions (UTC)"
 input bool   InpUseTokyo              = false;
@@ -324,6 +326,31 @@ void OnTick()
 
    double bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
    double ask=SymbolInfoDouble(_Symbol,SYMBOL_ASK);
+
+   // v4.84 research benchmark: random entries with identical money
+   // management, to test whether the Fibo setup beats a coin flip.
+   if(InpRandomEntry)
+     {
+      static datetime lastRandomBar=0;
+      datetime bt=iTime(_Symbol,InpTF,0);
+      int every=MathMax(1,InpRandomEntryBars);
+      int barIdx=(int)((long)bt/(long)PeriodSeconds(InpTF));
+      if(barIdx%every!=0 || bt==lastRandomBar)
+         return;
+      lastRandomBar=bt;
+
+      double rd=InpSL_ATR*atr;
+      bool buy=((barIdx%2)==0);
+      double e=buy ? ask : bid;
+      double sl=buy ? e-rd : e+rd;
+      double tp=buy ? e+InpTP_R*rd : e-InpTP_R*rd;
+      string rc=buy ? "RND BUY PROF=0" : "RND SELL PROF=0";
+      if(buy)
+         OpenPosition(ORDER_TYPE_BUY,ask,sl,tp,rc);
+      else
+         OpenPosition(ORDER_TYPE_SELL,bid,sl,tp,rc);
+      return;
+     }
 
    Impulse setup;
    int direction=FindCurrentSetup(atr,bid,ask,setup);
@@ -1842,17 +1869,19 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    else if(profit>0.0)
       g_consecutiveLosses=0;
 
-   // v4.5 MFE/MAE diagnostic per closed trade.
+   // v4.5 MFE/MAE diagnostic, v4.84: only log once the position is FULLY
+   // closed (a partial close keeps the ticket open), so MFE/MAE cover the
+   // whole life instead of stopping at the first partial.
    if(InpUseMfeLog)
      {
       ulong posId=(ulong)HistoryDealGetInteger(trans.deal,DEAL_POSITION_ID);
-      if(posId==g_mfeTicket && g_mfeProf>=0)
-         Print("MFELOG PROF=",g_mfeProf,
-               " MFE_R=",DoubleToString(g_mfeR,2),
-               " MAE_R=",DoubleToString(g_maeR,2),
-               " P/L=",DoubleToString(profit,2));
-      if(posId==g_mfeTicket)
+      if(posId==g_mfeTicket && !PositionSelectByTicket(posId))
         {
+         if(g_mfeProf>=0)
+            Print("MFELOG PROF=",g_mfeProf,
+                  " MFE_R=",DoubleToString(g_mfeR,2),
+                  " MAE_R=",DoubleToString(g_maeR,2),
+                  " P/L=",DoubleToString(profit,2));
          g_mfeTicket=0;
          g_mfeProf=-1;
         }
