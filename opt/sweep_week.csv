@@ -1,0 +1,9 @@
+label,net,pf,trades,payoff,dd_pct,win_pct,params
+wk_base,25.83,3.96,6.0,4.31,11.71,,{}
+wk_tp15,41.59,5.76,6.0,6.93,10.96,,{'InpTP_R': 1.5}
+wk_tp20,39.45,5.52,6.0,6.57,12.93,,{'InpTP_R': 2.0}
+wk_sl20,5.59,1.48,4.0,1.4,13.99,,{'InpSL_ATR': 2.0}
+wk_eff075,4.61,1.53,4.0,1.15,12.77,,{'InpFadeMinEfficiency': 0.75}
+wk_gateoff,34.52,3.45,9.0,3.84,11.8,,{'InpUseFadeRegimeGate': 'false'}
+wk_be15,25.83,3.96,6.0,4.31,11.71,,{'InpBreakEvenR': 1.5}
+wk_notrail,25.83,3.96,6.0,4.31,11.71,,{'InpUseTrailing': 'false'}

@@ -12,9 +12,50 @@
 //|
 //| v4.61: single 7-17 UTC window replaced by Tokyo/London/NewYork
 //| session windows (all ON by default = trade 0-21 UTC).
+//|
+//| v4.80: parameter defaults set from a walk-forward optimizer run in the
+//| mt5 docker container (XAUUSDm M5, Exness-MT5Trial7, 1-min OHLC model).
+//| Train 2025.01-2026.07 ($10k): best cluster PF 1.19, DD 12%, 2733 trades.
+//| Validated OUT-OF-SAMPLE 2026.07-09: $10k PF 1.14 DD 5%; $100 PF 1.08.
+//| Changed defaults: MinImpulseATR 1.2->0.8, MaxImpulseATR 4->5,
+//| FadeMinEfficiency 0.65->0.40, EntryFib 0.50/0.66 -> 0.382/0.727,
+//| SL_ATR 1.5->1.75, TP_R 1.0->2.0, MinReactionScore 3.0->2.5.
+//|
+//| v4.81/4.82: daily-budget risk controls for the "$100/day, cap the day at
+//| -$100, never lose $100 in one trade" model:
+//|   - InpDailyLossMoney  = 100  (absolute $ daily stop, EnforceDailyLossCap
+//|     closes open positions the moment the day hits -$100)
+//|   - InpMaxRiskMoneyPerTrade = 30 (single trade can never risk more)
+//|   - InpFixedLot = 0.02 (constant $ risk/trade; disable risk-% sizing)
+//|   - InpMaxConsecutiveLosses 3 -> 10 (daily $ cap governs, not streak)
+//| Daily-budget sim ($10k, 18 months, lot 0.02): mean +$5.3/day, 31% of days
+//| >= +$20, worst day ~ -$105, max losing streak 6.
+//|
+//| v4.7 fixes (post-mortem of 05-09 backtests):
+//|  1. FADE REGIME GATE: fade only CLEAN (efficient) impulses, i.e. require
+//|     efficiency >= InpFadeMinEfficiency (0.65). Jul-2026 A/B showed the
+//|     low-efficiency (choppy) fades were the losers and the efficient ones
+//|     were the winners, so the choppy band below the floor is skipped.
+//|  2. TP GEOMETRY: default TP mode TP_R_MULT. v4.72: InpTP_R 2.0 -> 1.0.
+//|     Over Jan-Jun (366 trades) only 12.6% reached the 2R target while 33%
+//|     reached 1R and were scratched by BE; a resting 1R TP banks those at
+//|     +1R instead of +0.25R. InpMinRR=1.0 matches.
+//|  3. EXIT LADDER: BE @1R (+0.25R), trail from 1.5R. With TP=1R the trail
+//|     never fires and BE is overtaken by the TP; both are inert by design.
+//|  4. RISK / SMALL ACCOUNT: InpMaxLotRiskPercent=10 lets the broker minimum
+//|     lot trade (a $100 account is forced to 0.01 lot = 4-9% actual risk on
+//|     XAUUSD) but SKIPS the extreme-vol min-lot trades that risked 13-19%
+//|     and produced the largest losses. InpDailyLossPercent=15 so one loss
+//|     does not stop the day. WarnAccountSize logs the real risk per trade.
+//|     Partial stays off below 2x min lot.
+//|  5. COMMENT FIT: position comments shortened ("F-SELL PROF=n RISK=x")
+//|     so the broker's 31-char limit never truncates RISK; previously 27/49
+//|     entries lost it and GetInitialRisk fell back to the live SL.
+//| v4.71: fade efficiency gate direction corrected (require eff >= min).
+//| Tokyo session default OFF (matches the 7-17 UTC evidence window).
 //+------------------------------------------------------------------+
 #property strict
-#property version "4.61"
+#property version "4.82"
 
 #include <Trade/Trade.mqh>
 
@@ -67,6 +108,7 @@ datetime g_lastBar=0;
 datetime g_day=0;
 double   g_dayStartEquity=0.0;
 int      g_consecutiveLosses=0;
+bool     g_dailyLocked=false;
 
 // Partial-take state (MaxPositions=1 so a single slot is enough).
 ulong    g_partialTicket=0;
@@ -95,16 +137,18 @@ input group "Core"
 input long   InpMagic                 = 20260916;
 input ENUM_TIMEFRAMES InpTF           = PERIOD_M5;
 input double InpRiskPercent           = 0.50;
-input double InpMinRR                 = 0.30;
+input double InpMinRR                 = 1.00;
 input int    InpMaxPositions          = 1;
 input bool   InpDebug                 = true;
 input bool   InpForceMinLot            = true;
 input double InpMaxLotRiskPercent     = 10.0;
+input double InpMaxRiskMoneyPerTrade  = 30.0;
+input double InpFixedLot              = 0.02;
 input bool   InpUseMfeLog             = true;
 input bool   InpFadeMode              = true;
 
 input group "Sessions (UTC)"
-input bool   InpUseTokyo              = true;
+input bool   InpUseTokyo              = false;
 input int    InpTokyoStartUTC         = 0;
 input int    InpTokyoEndUTC           = 8;
 input bool   InpUseLondon             = true;
@@ -119,12 +163,16 @@ input int    InpATRPeriod             = 14;
 input int    InpLookbackBars          = 150;
 input int    InpSwingLeft             = 2;
 input int    InpSwingRight            = 2;
-input double InpMinImpulseATR         = 1.20;
-input double InpMaxImpulseATR         = 4.00;
+input double InpMinImpulseATR         = 0.80;
+input double InpMaxImpulseATR         = 5.00;
 input double InpTrendEfficiencyMin    = 0.40;
 input int    InpMaxImpulseAgeBars     = 30;
 input bool   InpRequireBOS            = true;
 input bool   InpRequireStructure      = true;
+
+input group "Fade Regime"
+input bool   InpUseFadeRegimeGate     = true;
+input double InpFadeMinEfficiency     = 0.40;
 
 input group "Volatility Regime (realtime)"
 input bool   InpUseVolGate           = true;
@@ -133,8 +181,8 @@ input double InpMaxVolRatio          = 2.00;
 input double InpMinVolRatio          = 0.50;
 
 input group "Fibonacci Profiles (realtime)"
-input double InpEntryFibMin           = 0.50;
-input double InpEntryFibMax           = 0.66;
+input double InpEntryFibMin           = 0.382;
+input double InpEntryFibMax           = 0.727;
 input bool   InpUseDeepProfile        = true;
 input double InpDeepFibMin            = 0.66;
 input double InpDeepFibMax            = 0.786;
@@ -145,23 +193,23 @@ input int    InpMaxTouches            = 5;
 input double InpDeepSL_ATR            = 2.00;
 
 input group "Adaptive Exits (R from entry)"
-input double InpSL_ATR                = 1.50;
-input ENUM_TP_MODE InpTPMode          = TP_AT_EXTREME;
+input double InpSL_ATR                = 1.75;
+input ENUM_TP_MODE InpTPMode          = TP_R_MULT;
 input double InpTP_R                  = 2.00;
 
 input group "Reaction"
-input double InpMinReactionScore      = 3.0;
+input double InpMinReactionScore      = 2.5;
 input double InpMinBodyATR            = 0.25;
 input double InpMaxSpreadATR          = 0.15;
 input bool   InpRequireReactionClose  = true;
 
 input group "Position Management"
 input bool   InpUseBreakEven          = true;
-input double InpBreakEvenR            = 1.50;
+input double InpBreakEvenR            = 1.00;
 input double InpBreakEvenOffsetR      = 0.25;
 input bool   InpUseTrailing            = true;
-input double InpTrailStartR           = 2.50;
-input double InpTrailATR              = 2.00;
+input double InpTrailStartR           = 1.50;
+input double InpTrailATR              = 1.50;
 input bool   InpUsePartial            = true;
 input double InpPartialR              = 1.00;
 input double InpPartialPct            = 50.0;
@@ -169,8 +217,9 @@ input bool   InpUseTimeExit           = true;
 input int    InpMaxHoldMinutes        = 180;
 
 input group "Daily Protection"
-input double InpDailyLossPercent      = 2.0;
-input int    InpMaxConsecutiveLosses  = 3;
+input double InpDailyLossPercent      = 15.0;
+input double InpDailyLossMoney        = 100.0;
+input int    InpMaxConsecutiveLosses  = 10;
 
 //====================================================================
 // INIT
@@ -210,6 +259,7 @@ void OnDeinit(const int reason)
 void OnTick()
    {
    UpdateDailyState();
+   EnforceDailyLossCap();
    ManagePositions();
 
    if(!IsNewBar())
@@ -220,6 +270,15 @@ void OnTick()
      {
       GateMsg("WAIT: ATR not ready");
       return;
+     }
+
+   // v4.7: one-shot risk sanity check so a too-small account is loud, not
+   // silently trading 5-9% per position while configured for 0.5%.
+   static bool sizeWarned=false;
+   if(!sizeWarned)
+     {
+      sizeWarned=true;
+      WarnAccountSize(atr);
      }
 
    string reason="";
@@ -558,6 +617,18 @@ void EvaluateBuy(const Impulse &impulse,double atr,double ask,double bid)
      }
 
    double eff=ImpulseEfficiency(impulse.lowShift,impulse.highShift);
+
+   // v4.71: fade only CLEAN (efficient) impulses. Backtest Jul-2026 showed
+   // the gated-out low-efficiency trades were the losers; the profitable
+   // fades were the efficient ones. So require eff >= floor, skip choppy.
+   if(InpFadeMode && InpUseFadeRegimeGate && eff<InpFadeMinEfficiency)
+     {
+      if(InpDebug)
+         Print("Skip fade (weak/choppy impulse): eff=",DoubleToString(eff,2),
+               " < ",DoubleToString(InpFadeMinEfficiency,2));
+      return;
+     }
+
    int prof=SelectProfile(impulse,eff,AtrRatio(atr),zoneLow,zoneHigh,c);
    if(prof<0)
       return;
@@ -588,13 +659,14 @@ void EvaluateBuy(const Impulse &impulse,double atr,double ask,double bid)
          tp=impulse.high;
       if(tp<=ask || sl>=ask)
          return;
-      cm="FiboV4.6 BUY PROF="+IntegerToString(prof);
+      cm="BUY PROF="+IntegerToString(prof);
       if(OpenPosition(ORDER_TYPE_BUY,ask,sl,tp,cm))
          MarkImpulse(impulse);
      }
    else
      {
-      // FADE: short the pullback, target the origin (reversal).
+      // FADE: short the pullback. v4.7 default is an R-multiple target;
+      // the impulse-origin target only applies in TP_AT_EXTREME mode.
       sl=bid+riskDist;
       if(InpTPMode==TP_R_MULT)
          tp=bid-InpTP_R*riskDist;
@@ -606,7 +678,7 @@ void EvaluateBuy(const Impulse &impulse,double atr,double ask,double bid)
          tp=impulse.low;
       if(tp>=bid || sl<=bid)
          return;
-      cm="FiboV4.6 SELL-FADE PROF="+IntegerToString(prof);
+      cm="F-SELL PROF="+IntegerToString(prof);
       if(OpenPosition(ORDER_TYPE_SELL,bid,sl,tp,cm))
          MarkImpulse(impulse);
      }
@@ -642,6 +714,16 @@ void EvaluateSell(const Impulse &impulse,double atr,double ask,double bid)
      }
 
    double eff=ImpulseEfficiency(impulse.highShift,impulse.lowShift);
+
+   // v4.71: fade only CLEAN (efficient) impulses (mirror of EvaluateBuy).
+   if(InpFadeMode && InpUseFadeRegimeGate && eff<InpFadeMinEfficiency)
+     {
+      if(InpDebug)
+         Print("Skip fade (weak/choppy impulse): eff=",DoubleToString(eff,2),
+               " < ",DoubleToString(InpFadeMinEfficiency,2));
+      return;
+     }
+
    int prof=SelectProfile(impulse,eff,AtrRatio(atr),zoneLow,zoneHigh,c);
    if(prof<0)
       return;
@@ -672,13 +754,14 @@ void EvaluateSell(const Impulse &impulse,double atr,double ask,double bid)
          tp=impulse.low;
       if(tp>=bid || sl<=bid)
          return;
-      cm="FiboV4.6 SELL PROF="+IntegerToString(prof);
+      cm="SELL PROF="+IntegerToString(prof);
       if(OpenPosition(ORDER_TYPE_SELL,bid,sl,tp,cm))
          MarkImpulse(impulse);
      }
    else
      {
-      // FADE: buy the pullback, target the origin (reversal).
+      // FADE: buy the pullback. v4.7 default is an R-multiple target;
+      // the impulse-origin target only applies in TP_AT_EXTREME mode.
       sl=ask-riskDist;
       if(InpTPMode==TP_R_MULT)
          tp=ask+InpTP_R*riskDist;
@@ -690,7 +773,7 @@ void EvaluateSell(const Impulse &impulse,double atr,double ask,double bid)
          tp=impulse.high;
       if(tp<=ask || sl>=ask)
          return;
-      cm="FiboV4.6 BUY-FADE PROF="+IntegerToString(prof);
+      cm="F-BUY PROF="+IntegerToString(prof);
       if(OpenPosition(ORDER_TYPE_BUY,ask,sl,tp,cm))
          MarkImpulse(impulse);
      }
@@ -922,7 +1005,7 @@ bool OpenPosition(ENUM_ORDER_TYPE type,double entry,double sl,double tp,string c
    tp=NormalizeDouble(tp,digits);
 
    bool ok=false;
-   string orderComment=comment+" RISK="+DoubleToString(risk,8);
+   string orderComment=comment+" RISK="+DoubleToString(risk,2);
 
    if(type==ORDER_TYPE_BUY)
       ok=trade.Buy(volume,_Symbol,0.0,sl,tp,orderComment);
@@ -971,7 +1054,9 @@ double CalculateRiskVolume(double stopDistance)
    if(moneyPerLot<=0.0)
       return(0.0);
 
-   double calculatedVolume=riskMoney/moneyPerLot;
+   double calculatedVolume=(InpFixedLot>0.0)
+      ? InpFixedLot
+      : riskMoney/moneyPerLot;
 
    double minVolume=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
    double maxVolume=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MAX);
@@ -1031,7 +1116,71 @@ double CalculateRiskVolume(double stopDistance)
    if(volume>maxVolume)
       volume=maxVolume;
 
+   // v4.81: hard per-trade money risk cap. Enforces "one trade can never
+   // lose more than InpMaxRiskMoneyPerTrade" so the daily cap of
+   // InpDailyLossMoney is reached only after several trades, never one.
+   if(InpMaxRiskMoneyPerTrade>0.0)
+     {
+      double maxVolByMoney=MathFloor(
+         (InpMaxRiskMoneyPerTrade/moneyPerLot)/step)*step;
+      if(maxVolByMoney<volume)
+        {
+         if(maxVolByMoney<minVolume)
+           {
+            if(InpDebug)
+               Print("Rejected: single-trade risk cap. min lot risk=",
+                     DoubleToString(minVolume*moneyPerLot,2),
+                     " > MaxRiskMoneyPerTrade=",
+                     DoubleToString(InpMaxRiskMoneyPerTrade,2));
+            return(0.0);
+           }
+         volume=NormalizeVolume(maxVolByMoney);
+         if(InpDebug)
+            Print("Lot capped by per-trade risk: lot=",
+                  DoubleToString(volume,2)," risk$=",
+                  DoubleToString(volume*moneyPerLot,2));
+        }
+     }
+
    return(volume);
+   }
+
+// v4.7: report the real per-trade risk implied by the broker minimum lot.
+// On a small account the min lot alone is 5-9% of equity on XAUUSD, so the
+// 0.5% configuration is fiction; surface it instead of losing silently.
+void WarnAccountSize(double atr)
+  {
+   if(!InpDebug || atr<=0.0)
+      return;
+
+   double riskDist=InpSL_ATR*atr;
+   double equity=AccountInfoDouble(ACCOUNT_EQUITY);
+   double minVolume=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
+   double tickValue=SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_VALUE);
+   double tickSize =SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_SIZE);
+
+   if(equity<=0.0 || minVolume<=0.0 || tickValue<=0.0 || tickSize<=0.0)
+      return;
+
+   double moneyPerLot=(riskDist/tickSize)*tickValue;
+   if(moneyPerLot<=0.0)
+      return;
+
+   double minLotRiskPct=(minVolume*moneyPerLot)/equity*100.0;
+
+   if(minLotRiskPct>InpMaxLotRiskPercent)
+      Print("WARNING: account too small for risk model. Min-lot risk=",
+            DoubleToString(minLotRiskPct,2),"% > MaxLotRiskPercent=",
+            DoubleToString(InpMaxLotRiskPercent,2),
+            "%. Trades will be REJECTED. Raise InpMaxLotRiskPercent or use a",
+            " cent/micro account.");
+   else if(minLotRiskPct>InpRiskPercent)
+      Print("SMALL ACCOUNT: using min lot ",
+            DoubleToString(minVolume,2),
+            ". Target risk=",DoubleToString(InpRiskPercent,2),
+            "%, actual min-lot risk=",DoubleToString(minLotRiskPct,2),
+            "% (SL=",DoubleToString(riskDist,2)," price units). Partial-take",
+            " needs >= ",DoubleToString(2.0*minVolume,2)," lot so it is OFF.");
   }
 
 double NormalizeVolume(double volume)
@@ -1065,6 +1214,39 @@ double MinimumStopDistance()
 // v3 calculated "initialRisk" from the CURRENT SL. After BE/trailing,
 // R changed. v4 stores original risk in the position comment.
 //====================================================================
+// v4.81: hard daily money stop. When the day's loss reaches InpDailyLossMoney
+// close every EA position and lock out for the rest of the day. Without this
+// an OPEN position can overshoot the cap (the pre-entry gate only blocks
+// new trades).
+void EnforceDailyLossCap()
+  {
+   if(g_dailyLocked || InpDailyLossMoney<=0.0)
+      return;
+   if(g_dayStartEquity<=0.0)
+      return;
+
+   double equity=AccountInfoDouble(ACCOUNT_EQUITY);
+   if((g_dayStartEquity-equity)<InpDailyLossMoney)
+      return;
+
+   for(int i=PositionsTotal()-1;i>=0;i--)
+     {
+      ulong ticket=PositionGetTicket(i);
+      if(ticket==0 || !PositionSelectByTicket(ticket))
+         continue;
+      if(PositionGetString(POSITION_SYMBOL)!=_Symbol)
+         continue;
+      if((long)PositionGetInteger(POSITION_MAGIC)!=InpMagic)
+         continue;
+      trade.PositionClose(ticket);
+     }
+
+   g_dailyLocked=true;
+   if(InpDebug)
+      Print("DAILY LOSS CAP hit ($",DoubleToString(InpDailyLossMoney,2),
+            "): closed all, locked until next day.");
+  }
+
 void ManagePositions()
   {
    double atr=GetATR(1);
@@ -1123,6 +1305,20 @@ void ManagePositions()
          double vol=PositionGetDouble(POSITION_VOLUME);
          double minVol=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
          double closeVol=NormalizeDouble(vol*InpPartialPct/100.0,2);
+
+         // v4.7: partial is impossible below 2x min lot. Say so once.
+         if(vol<2.0*minVol)
+           {
+            static bool partialWarned=false;
+            if(!partialWarned && InpDebug)
+              {
+               partialWarned=true;
+               Print("NOTE: partial-take disabled: lot ",DoubleToString(vol,2),
+                     " < 2x broker min ",DoubleToString(minVol,2),
+                     ". Partial needs >= ",DoubleToString(2.0*minVol,2)," lot.");
+              }
+           }
+
          if(closeVol>=minVol && vol-closeVol>=minVol)
            {
             if(trade.PositionClosePartial(ticket,closeVol))
@@ -1393,7 +1589,14 @@ bool TradingAllowed(string &reason)
    double dailyLoss=
       (g_dayStartEquity-equity)/g_dayStartEquity*100.0;
 
-   if(dailyLoss>=InpDailyLossPercent)
+   // v4.81: absolute daily loss cap (money) takes priority when set.
+   if(InpDailyLossMoney>0.0 && (g_dayStartEquity-equity)>=InpDailyLossMoney)
+     {
+      reason="daily loss limit ($)";
+      return(false);
+     }
+
+   if(InpDailyLossMoney<=0.0 && dailyLoss>=InpDailyLossPercent)
      {
       reason="daily loss limit";
       return(false);
@@ -1484,6 +1687,7 @@ void ResetDailyState()
    g_day=StructToTime(tm);
    g_dayStartEquity=AccountInfoDouble(ACCOUNT_EQUITY);
    g_consecutiveLosses=0;
+   g_dailyLocked=false;
   }
 
 void UpdateDailyState()

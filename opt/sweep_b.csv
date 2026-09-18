@@ -1,0 +1,4 @@
+label,net,pf,trades,payoff,dd_pct,params
+train_fadeoff,-63.47,0.67,62.0,-1.02,63.99,{'InpFadeMode': 'false'}
+train_gateoff,-50.11,0.8,77.0,-0.65,71.95,{'InpUseFadeRegimeGate': 'false'}
+train_eff075,-49.99,0.81,82.0,-0.61,74.82,{'InpFadeMinEfficiency': 0.75}
