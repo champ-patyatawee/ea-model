@@ -252,7 +252,7 @@ input double InpDeepSL_ATR            = 2.00;
 input group "Adaptive Exits (R from entry)"
 input double InpSL_ATR                = 1.75;
 input ENUM_TP_MODE InpTPMode          = TP_R_MULT;
-input double InpTP_R                  = 2.00;
+input double InpTP_R                  = 1.50;
 
 input group "Reaction"
 input double InpMinReactionScore      = 3.5;
