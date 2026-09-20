@@ -8,6 +8,10 @@
 //| winning 56-66%); payoff is flat. Worst month 2026.03 (-248) was a
 //| one-sided down trend where Long fades won only 38% (Long net -409).
 //| Next: test an external regime filter (trend / volatility) in this file.
+//| Phase-2 result (Regime Filter, H1 EMA slope vs H1 ATR): no net gain.
+//| baseline train +2146 PF1.17 DD4.07 / OOS +326 PF1.15. thr=1.0 gives
+//| train +2104 PF1.17 DD3.45 (net -2%, DD -15%) and OOS +316 -- i.e. a
+//| mild risk reduction, not a profit gain. thr<1 hurts net. Default OFF.
 //|//| v4.90 (this file, NEW; v4.6 file left untouched): adaptive-Fibo
 //| experiments, all DEFAULT OFF because none beat the baseline:
 //|   - InpUseATRAdaptiveZone: shift the retracement band by the fast/slow
@@ -132,6 +136,7 @@ struct Impulse
 int      g_atrHandle=INVALID_HANDLE;
 int      g_atrSlowHandle=INVALID_HANDLE;
 int      g_htfHandle=INVALID_HANDLE;
+int      g_atrH1Handle=INVALID_HANDLE;
 datetime g_lastBar=0;
 datetime g_day=0;
 double   g_dayStartEquity=0.0;
@@ -221,6 +226,11 @@ input bool   InpUseATRAdaptiveZone    = false;
 input double InpATRZoneShift          = 0.10;
 input bool   InpUseDualMode           = false;
 
+input group "Regime Filter (v5.0)"
+input bool   InpUseRegimeFilter       = false;
+input int    InpRegimeSlopeBars       = 6;
+input double InpRegimeStrengthMin     = 0.50;
+
 input group "Volatility Regime (realtime)"
 input bool   InpUseVolGate           = true;
 input int    InpATRSlowPeriod        = 50;
@@ -292,6 +302,10 @@ int OnInit()
    if(g_htfHandle==INVALID_HANDLE)
       Print("WARNING: HTF EMA unavailable, HTF filter fail-open.");
 
+   g_atrH1Handle=iATR(_Symbol,PERIOD_H1,14);
+   if(g_atrH1Handle==INVALID_HANDLE)
+      Print("WARNING: H1 ATR unavailable, regime filter fail-open.");
+
    ResetDailyState();
    return(INIT_SUCCEEDED);
    }
@@ -304,6 +318,8 @@ void OnDeinit(const int reason)
       IndicatorRelease(g_atrSlowHandle);
    if(g_htfHandle!=INVALID_HANDLE)
       IndicatorRelease(g_htfHandle);
+   if(g_atrH1Handle!=INVALID_HANDLE)
+      IndicatorRelease(g_atrH1Handle);
    }
 
 //====================================================================
@@ -724,6 +740,40 @@ int HTFTrendState()
   }
 
 //====================================================================
+// REGIME STRENGTH (v5.0)
+//
+// |EMA(HTF) slope over InpRegimeSlopeBars| compared to the H1 ATR.
+// Trend is "strong" when the slope >= InpRegimeStrengthMin * ATR(H1).
+// The regime filter skips counter-trend fades ONLY when the trend is
+// strong (the always-on HTF filter, which skipped every counter-trend
+// fade, destroyed the edge in testing).
+//====================================================================
+bool RegimeTrendStrong()
+  {
+   if(g_htfHandle==INVALID_HANDLE || g_atrH1Handle==INVALID_HANDLE)
+      return(false);
+
+   int need=InpRegimeSlopeBars+1;
+   if(need<2) need=2;
+
+   double e[];
+   ArraySetAsSeries(e,true);
+   if(CopyBuffer(g_htfHandle,0,0,need,e)!=need)
+      return(false);
+
+   double a[];
+   ArraySetAsSeries(a,true);
+   if(CopyBuffer(g_atrH1Handle,0,1,1,a)!=1)
+      return(false);
+
+   if(a[0]<=0.0)
+      return(false);
+
+   double slope=MathAbs(e[1]-e[InpRegimeSlopeBars]);
+   return(slope>=InpRegimeStrengthMin*a[0]);
+  }
+
+//====================================================================
 // BULLISH SETUP (v4.6: fade executes SHORT here — same zone, mirrored
 // reaction/SL/TP; InpFadeMode=false = original LONG)
 //====================================================================
@@ -813,13 +863,20 @@ void EvaluateBuy(const Impulse &impulse,double atr,double ask,double bid)
      {
       // FADE: short the pullback. v4.7 default is an R-multiple target;
       // the impulse-origin target only applies in TP_AT_EXTREME mode.
-      // v4.83: skip shorting into an established HTF up-trend.
-      if(InpUseHTFTrendFilter && HTFTrendState()==1)
-        {
-         if(InpDebug)
-            Print("Skip fade: HTF up-trend, no short into it");
-         return;
-        }
+       // v4.83: skip shorting into an established HTF up-trend.
+       if(InpUseHTFTrendFilter && HTFTrendState()==1)
+         {
+          if(InpDebug)
+             Print("Skip fade: HTF up-trend, no short into it");
+          return;
+         }
+       // v5.0: skip short fade only when the up-trend is STRONG.
+       if(InpUseRegimeFilter && HTFTrendState()==1 && RegimeTrendStrong())
+         {
+          if(InpDebug)
+             Print("Skip fade: strong HTF up-trend, no short into it");
+          return;
+         }
       // v4.83: reactive daily lock - stop shorting after N short losses today.
       if(InpUseDailyDirLock && InpMaxDirLossesPerDay>0 &&
          g_dayLossShort>=InpMaxDirLossesPerDay)
@@ -932,13 +989,20 @@ void EvaluateSell(const Impulse &impulse,double atr,double ask,double bid)
      {
       // FADE: buy the pullback. v4.7 default is an R-multiple target;
       // the impulse-origin target only applies in TP_AT_EXTREME mode.
-      // v4.83: skip buying into an established HTF down-trend.
-      if(InpUseHTFTrendFilter && HTFTrendState()==-1)
-        {
-         if(InpDebug)
-            Print("Skip fade: HTF down-trend, no long into it");
-         return;
-        }
+       // v4.83: skip buying into an established HTF down-trend.
+       if(InpUseHTFTrendFilter && HTFTrendState()==-1)
+         {
+          if(InpDebug)
+             Print("Skip fade: HTF down-trend, no long into it");
+          return;
+         }
+       // v5.0: skip long fade only when the down-trend is STRONG.
+       if(InpUseRegimeFilter && HTFTrendState()==-1 && RegimeTrendStrong())
+         {
+          if(InpDebug)
+             Print("Skip fade: strong HTF down-trend, no long into it");
+          return;
+         }
       // v4.83: reactive daily lock - stop longing after N long losses today.
       if(InpUseDailyDirLock && InpMaxDirLossesPerDay>0 &&
          g_dayLossLong>=InpMaxDirLossesPerDay)
