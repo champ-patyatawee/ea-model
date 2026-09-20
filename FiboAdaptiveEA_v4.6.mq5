@@ -66,7 +66,7 @@
 //| Tokyo session default OFF (matches the 7-17 UTC evidence window).
 //+------------------------------------------------------------------+
 #property strict
-#property version "4.85"
+#property version "4.86"
 
 #include <Trade/Trade.mqh>
 
@@ -334,13 +334,17 @@ void OnTick()
       static datetime lastRandomBar=0;
       datetime bt=iTime(_Symbol,InpTF,0);
       int every=MathMax(1,InpRandomEntryBars);
-      int barIdx=(int)((long)bt/(long)PeriodSeconds(InpTF));
-      if(barIdx%every!=0 || bt==lastRandomBar)
+      long barIdx=(long)bt/(long)PeriodSeconds(InpTF);
+      if((barIdx%(long)every)!=0 || bt==lastRandomBar)
          return;
       lastRandomBar=bt;
 
+      // v4.86: alternate direction by entry counter, not by barIdx parity
+      // (barIdx%every==0 made barIdx always even -> always LONG).
+      long entryN=barIdx/every;
+      bool buy=((entryN%2)==0);
+
       double rd=InpSL_ATR*atr;
-      bool buy=((barIdx%2)==0);
       double e=buy ? ask : bid;
       double sl=buy ? e-rd : e+rd;
       double tp=buy ? e+InpTP_R*rd : e-InpTP_R*rd;
