@@ -255,7 +255,7 @@ input ENUM_TP_MODE InpTPMode          = TP_R_MULT;
 input double InpTP_R                  = 2.00;
 
 input group "Reaction"
-input double InpMinReactionScore      = 2.5;
+input double InpMinReactionScore      = 3.5;
 input double InpMinBodyATR            = 0.25;
 input double InpMaxSpreadATR          = 0.15;
 input bool   InpRequireReactionClose  = true;

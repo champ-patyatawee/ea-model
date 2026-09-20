@@ -1,7 +1,9 @@
 import sys, collections
 import run_bt as R
 d1,d2 = sys.argv[1], sys.argv[2]
-R.run(R.build_ini(d1,d2,{},deposit=10000))
+import json,os
+P=json.loads(os.environ.get("MT5_PARAMS","{}"))
+R.run(R.build_ini(d1,d2,P,deposit=10000))
 # position-level per day
 import re,html
 s=open('report.htm',encoding='utf-16').read()
