@@ -3,23 +3,27 @@
 //| Structural Fibonacci FADE EA - regime-study branch                |
 //|                                                                  |
 //| v5.00 = v4.90 baseline (adaptive toggles default OFF) + a place for
-//| regime work. Phase-1 anatomy over 18 months (2025.01-2026.06) shows
-//| months differ almost entirely by WINRATE (losing months 40-45% vs
-//| winning 56-66%); payoff is flat. Worst month 2026.03 (-248) was a
-//| one-sided down trend where Long fades won only 38% (Long net -409).
-//| Next: test an external regime filter (trend / volatility) in this file.
-//| Phase-2 result (Regime Filter, H1 EMA slope vs H1 ATR): no net gain.
-//| baseline train +2146 PF1.17 DD4.07 / OOS +326 PF1.15. thr=1.0 gives
-//| train +2104 PF1.17 DD3.45 (net -2%, DD -15%) and OOS +316 -- i.e. a
-//| mild risk reduction, not a profit gain. thr<1 hurts net. Default OFF.
-//|//| v4.90 (this file, NEW; v4.6 file left untouched): adaptive-Fibo
-//| experiments, all DEFAULT OFF because none beat the baseline:
-//|   - InpUseATRAdaptiveZone: shift the retracement band by the fast/slow
-//|     ATR ratio. Tested: train +2146 -> +1780 (PF 1.17->1.14), OOS +326 ->
-//|     +339. Net neutral/slightly worse. OFF.
-//|   - InpUseDualMode: on a bullish setup with HTF up, ride the trend
-//|     (continuation) instead of fading. Tested HARMFUL: train -343 (PF
-//|     0.98), OOS +3. OFF.
+//| regime work.
+//|
+//| Phase-1 anatomy over 21 months (2025.01-2026.09) shows months differ
+//| almost entirely by WINRATE (losing months 40-45% vs winning 56-66%);
+//| payoff is flat. Worst month 2026.03 (-248) was a one-sided down trend
+//| where Long fades won only 38% (Long net -409).
+//|
+//| Phase-2 (regime filter, H1 EMA slope vs H1 ATR): no net gain. thr=1.0
+//| gave net -2% but DD -15% (a risk reduction, not a profit gain). OFF.
+//|
+//| Phase-0 (oracle vs fixed vs walk-forward), grid reaction>=3/>=4 x
+//| TP 1.0/1.5/2.0 over 2025.01-2026.09:
+//|   fixed totals:  r2.5/tp1.5 = +2514 (BEST), r2.5/tp2.0 +2490,
+//|                  r3.5/tp1.5 +2012, r3.5/tp2.0 +1974, tp1.0 much worse.
+//|   oracle (best per month, hindsight, upper bound) = +3716.
+//|   walk-forward (pick best of prior K months): K2 +2320, K3 +1948,
+//|                  K6 +1941 -> ALL WORSE than the best fixed set.
+//| => The monthly-best parameter is NOT predictable; adaptive switching
+//|    destroys profit. Use the robust FIXED set instead:
+//|    InpMinReactionScore=2.5 (>=3) and InpTP_R=1.5.  (defaults below)
+//|
 //|   - Both together: train -326, OOS -191. OFF.
 //|   Baseline (all OFF) reproduces v4.86: train +2146 PF1.17, OOS +326 PF1.15.
 //|//| v4.6 = v4.5 with direction INVERTED (single-variable test).
@@ -255,7 +259,7 @@ input ENUM_TP_MODE InpTPMode          = TP_R_MULT;
 input double InpTP_R                  = 1.50;
 
 input group "Reaction"
-input double InpMinReactionScore      = 3.5;
+input double InpMinReactionScore      = 2.5;
 input double InpMinBodyATR            = 0.25;
 input double InpMaxSpreadATR          = 0.15;
 input bool   InpRequireReactionClose  = true;
