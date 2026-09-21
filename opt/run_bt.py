@@ -24,9 +24,10 @@ def sh(args, timeout=None, check=False):
 
 
 def build_ini(fromdate, todate, params, deposit=100, leverage=2000, model=1):
+    expert=os.environ.get("MT5_EXPERT", EXPERT)
     lines = [
         "[Tester]",
-        f"Expert={EXPERT}",
+        f"Expert={expert}",
         f"Symbol={SYMBOL}",
         "Period=M5",
         f"FromDate={fromdate}",
