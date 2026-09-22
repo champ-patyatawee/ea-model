@@ -23,8 +23,9 @@ def sh(args, timeout=None, check=False):
                           capture_output=True, text=True)
 
 
-def build_ini(fromdate, todate, params, deposit=100, leverage=2000, model=1):
+def build_ini(fromdate, todate, params, deposit=100, leverage=2000, model=None):
     expert=os.environ.get("MT5_EXPERT", EXPERT)
+    if model is None: model=int(os.environ.get("MT5_MODEL","1"))
     lines = [
         "[Tester]",
         f"Expert={expert}",
