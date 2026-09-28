@@ -7,7 +7,7 @@ mt5.initialize()
 mt5.symbol_select("XAUUSDm", True)
 
 CH = 20000
-MAX = 600000
+MAX = 2000000
 rows = []
 start = 0
 while start < MAX:
