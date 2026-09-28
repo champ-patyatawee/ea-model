@@ -3,3 +3,7 @@ opt/report.htm
 opt/OptReport*.xml
 opt/*.log
 opt/test.ini
+opt/rl_gold/*.csv
+opt/rl_gold/*.log
+opt/rl_gold/models*/
+opt/vendor/
