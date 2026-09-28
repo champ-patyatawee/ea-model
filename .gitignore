@@ -7,3 +7,5 @@ opt/rl_gold/*.csv
 opt/rl_gold/*.log
 opt/rl_gold/models*/
 opt/vendor/
+id_ed25519
+id_ed25519.pub
