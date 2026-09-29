@@ -7,5 +7,9 @@ opt/rl_gold/*.csv
 opt/rl_gold/*.log
 opt/rl_gold/models*/
 opt/vendor/
+__pycache__/
+*.pyc
+opt/rl_gold/live/*.jsonl
+opt/rl_gold/live/runner*.out
 id_ed25519
 id_ed25519.pub
