@@ -10,10 +10,25 @@ import rpyc
 
 class MT5:
     def __init__(self, host: str = "localhost", port: int = 8001):
-        self.conn = rpyc.classic.connect(host, port)
+        self.host = host
+        self.port = port
+        self.conn = None
+        self._connect()
+
+    def _connect(self):
+        self.conn = rpyc.classic.connect(self.host, self.port)
         self.conn.execute("import MetaTrader5 as mt5")
         if not self.conn.eval("mt5.initialize()"):
             raise RuntimeError(f"mt5.initialize failed: {self.conn.eval('mt5.last_error()')}")
+
+    def reconnect(self):
+        """Drop and re-open the rpyc connection (bridge restarts, EOF, etc.)."""
+        try:
+            if self.conn is not None:
+                self.conn.close()
+        except Exception:
+            pass
+        self._connect()
 
     # ---- read ----------------------------------------------------------------
     def account(self) -> dict:

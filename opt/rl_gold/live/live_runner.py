@@ -87,6 +87,13 @@ class Runner:
                 ov = pickle.load(f)
             self.members.append((m, ov.obs_rms))
         self.max_risk_pct = float(max_risk_pct)  # skip an entry if a single trade risks more than this % of equity
+        # --- code-side profit protection (model still picks direction/SL/TP) ---
+        self.trail_enable = os.environ.get("TRAIL_ENABLE", "1") == "1"
+        self.trail_start_r = float(os.environ.get("TRAIL_START_R", "0.6"))   # arm trailing after this many R of profit
+        self.trail_lock_r = float(os.environ.get("TRAIL_LOCK_R", "0.3"))     # once armed, lock at least this many R
+        self.giveback_enable = os.environ.get("GIVEBACK_CLOSE_ENABLE", "1") == "1"
+        self.giveback_frac = float(os.environ.get("GIVEBACK_FRAC", "0.45"))  # close if profit retreats this frac from peak
+        self.giveback_min_r = float(os.environ.get("GIVEBACK_MIN_R", "0.5")) # only once peak >= this many R
         self.risk_fraction = risk_fraction if risk_fraction is not None else CFG.risk_fraction
         self.si = self.bridge.symbol_info(symbol)
         self.contract = float(self.si["trade_contract_size"])
@@ -95,13 +102,23 @@ class Runner:
         self.digits = int(self.si["digits"])
         self.daily_start_equity = None
         self.daily_cap_hit = False
+        self._peaks = {}   # ticket -> peak favourable excursion in R
+        # --- anti-churn / decision-cadence control ---
+        # The model is trained on H1-bar-close decisions. Acting on every poll
+        # produced a flip-fest that bled the account (v6c live, 2026-09-30).
+        # Default: only change the position when a NEW H1 bar has closed.
+        self.h1_only = os.environ.get("H1_ONLY", "1") == "1"
+        self.min_hold_min = float(os.environ.get("MIN_HOLD_MIN", "0"))  # min minutes between position changes (0 = off)
+        self._last_h1_close = None   # timestamp of the last H1 bar we acted on
+        self._last_change_ts = None  # wall-clock of the last position change
 
     # ------------------------------------------------------------------ log
     def log(self, rec: dict):
         rec["ts"] = datetime.now(timezone.utc).isoformat()
+        line = json.dumps(rec, default=str)
         with open(self.log_path, "a") as f:
-            f.write(json.dumps(rec) + "\n")
-        print(json.dumps(rec), flush=True)
+            f.write(line + "\n")
+        print(line, flush=True)
 
     # -------------------------------------------------------------- sizing
     def units_to_lot(self, units: float) -> float:
@@ -113,6 +130,16 @@ class Runner:
     def current_position(self):
         ps = self.bridge.positions(self.symbol, MAGIC)
         return ps[0] if ps else None
+
+    def _peak_r(self, ticket: int, cur_r: float) -> float:
+        """Ratcheted high-water of favourable excursion (R) for a ticket."""
+        prev = self._peaks.get(ticket, -np.inf)
+        peak = max(prev, cur_r)
+        self._peaks[ticket] = peak
+        return peak
+
+    def _clear_peak(self, ticket: int):
+        self._peaks.pop(ticket, None)
 
     def build_env(self, m1_df, live_pos):
         dec, m1d, fc = build_state(m1_df, len(m1_df), None)
@@ -186,11 +213,33 @@ class Runner:
             self.log({"event": "spread_guard", "spread": spread_pts, "action": "skip"})
             return
 
+        # --- decision cadence: act only on a NEW closed H1 bar ---
+        # env's H1 bar produces a new row when the hour closes. We compare the
+        # newest closed H1 close-time to the last one we acted on.
+        if self.h1_only:
+            now = pd.Timestamp.now(tz="UTC")
+            # newest closed H1 bar boundary (floor to the hour)
+            h1_close = now.floor("1h")
+            if self._last_h1_close is not None and h1_close <= self._last_h1_close:
+                self.log({"event": "wait_next_h1", "h1_close": str(h1_close), "action": "skip"})
+                return
+
+        # --- anti-churn cooldown between position changes ---
+        if self.min_hold_min > 0 and self._last_change_ts is not None:
+            elapsed_min = (pd.Timestamp.now(tz="UTC") - self._last_change_ts).total_seconds() / 60.0
+            if elapsed_min < self.min_hold_min:
+                self.log({"event": "cooldown", "elapsed_min": round(elapsed_min, 1),
+                          "action": "skip"})
+                return
+
         m1_levels = int(os.environ.get("M1_LEVELS", "40000"))
         m1 = _df_from_rates(self.bridge.fetch_m1(self.symbol, m1_levels))
         env = self.build_env(m1, self.current_position())
         direction, sl_idx, tp_idx, votes = self.predict_ensemble(env)
         desired = {0: 0, 1: 1, 2: -1}[direction]
+        # we have now acted on this H1 bar; block further decisions until the next one closes
+        if self.h1_only:
+            self._last_h1_close = pd.Timestamp.now(tz="UTC").floor("1h")
 
         row = env._current_row()
         atr = max(float(row["atr"]), 1e-12)
@@ -210,24 +259,66 @@ class Runner:
                     res = self.bridge.close_position(live["ticket"], self.symbol,
                                                      live["dir"], live["volume"], MAGIC)
                     rec["action"] = "close"; rec["result"] = res
+                    self._last_change_ts = pd.Timestamp.now(tz="UTC")
                 self.log(rec)
                 if desired == 0:
                     return
             else:
-                # same direction: check whether SL/TP should be refreshed
+                # ---- same direction: manage SL/TP + code-side profit protection ----
                 sl_mult = SL_ATR[sl_idx]; tp_r = TP_R[tp_idx]
                 sl_dist = max(sl_mult * atr, 1e-8)
+
+                # current favourable excursion in R (based on current price)
+                risk = abs(live["price_open"] - (live["sl"] or (live["price_open"] - live["dir"] * sl_dist)))
+                risk = max(risk, 1e-8)
+                cur_r = live["dir"] * (close - live["price_open"]) / risk
+                peak_r = self._peak_r(live["ticket"], cur_r)   # ratcheted high-water, persisted in memory
+
+                # 1) giveback close: profit retreated from the peak -> take what's left
+                if (self.giveback_enable and peak_r >= self.giveback_min_r
+                        and cur_r <= peak_r * (1.0 - self.giveback_frac)):
+                    rec.update({"action": "giveback_close", "cur_r": round(cur_r, 3),
+                                "peak_r": round(peak_r, 3)})
+                    if not self.dry:
+                        rec["result"] = self.bridge.close_position(
+                            live["ticket"], self.symbol, live["dir"], live["volume"], MAGIC)
+                    self._clear_peak(live["ticket"])
+                    self.log(rec)
+                    return
+
+                # target SL/TP from the model's chosen bracket
                 new_sl = close - live["dir"] * sl_dist
                 new_tp = close + live["dir"] * tp_r * sl_dist
-                if abs((live["sl"] or 0) - new_sl) > 0.05 or abs((live["tp"] or 0) - new_tp) > 0.05:
-                    if self.dry:
-                        rec["action"] = "would_modify"; rec["new_sl"] = new_sl; rec["new_tp"] = new_tp
+
+                # 2) trailing stop: once peak >= trail_start_r, lock >= trail_lock_r of profit.
+                #    A stop may only ratchet FORWARD (never loosen the existing one).
+                if self.trail_enable and peak_r >= self.trail_start_r:
+                    trail_sl = close - live["dir"] * (cur_r - self.trail_lock_r) * risk \
+                        if cur_r > self.trail_lock_r else new_sl
+                    # never worse than existing SL for a long (or better for a short)
+                    if live["dir"] == 1:
+                        new_sl = max(new_sl, trail_sl, live["sl"] or -np.inf)
                     else:
-                        res = self.bridge.modify_position(live["ticket"], new_sl, new_tp)
-                        rec["action"] = "modify"; rec["new_sl"] = new_sl; rec["new_tp"] = new_tp
-                        rec["result"] = res
+                        new_sl = min(new_sl, trail_sl, live["sl"] or np.inf)
+
+                cur_sl = live["sl"] or 0.0
+                # if trailing is armed, never loosen the existing SL
+                if self.trail_enable and peak_r >= self.trail_start_r and live["sl"]:
+                    if live["dir"] == 1:
+                        new_sl = max(new_sl, live["sl"])
+                    else:
+                        new_sl = min(new_sl, live["sl"])
+
+                if abs(cur_sl - new_sl) > 0.05 or abs((live["tp"] or 0) - new_tp) > 0.05:
+                    rec.update({"action": "modify", "new_sl": new_sl, "new_tp": new_tp,
+                                "cur_r": round(cur_r, 3), "peak_r": round(peak_r, 3)})
+                    if self.dry:
+                        rec["action"] = "would_modify"
+                    else:
+                        rec["result"] = self.bridge.modify_position(live["ticket"], new_sl, new_tp)
                 else:
                     rec["action"] = "hold"
+                    rec["cur_r"] = round(cur_r, 3); rec["peak_r"] = round(peak_r, 3)
                 self.log(rec)
                 return
 
@@ -261,6 +352,7 @@ class Runner:
             return
         res = self.bridge.market_order(self.symbol, desired, lot, sl, tp, MAGIC)
         rec["result"] = res
+        self._last_change_ts = pd.Timestamp.now(tz="UTC")
         self.log(rec)
 
 
@@ -311,6 +403,11 @@ def main():
                 r.run_once()
             except Exception as e:
                 r.log({"event": "error", "err": repr(e)})
+                try:
+                    r.bridge.reconnect()
+                    r.log({"event": "reconnected"})
+                except Exception as e2:
+                    r.log({"event": "reconnect_failed", "err": repr(e2)})
             time.sleep(int(os.environ.get("POLL_SECONDS", "300")))
     else:
         r.run_once()

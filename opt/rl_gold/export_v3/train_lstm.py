@@ -83,6 +83,7 @@ def build_env(dec, m1, fc, randomize_start=False, episode_steps=None):
         commission_per_trade=CFG.commission_per_trade,
         holding_penalty=CFG.holding_penalty, reward_mtm_weight=CFG.reward_mtm_weight,
         giveback_penalty=GIVEBACK, loss_penalty=LOSS_PEN,
+        flat_penalty=float(os.environ.get("FLAT_PEN", "0.0")),
         randomize_start=randomize_start, max_episode_steps=episode_steps)
     return Monitor(env)
 

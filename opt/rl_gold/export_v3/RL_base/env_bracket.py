@@ -55,6 +55,7 @@ class BracketTradingEnv(gym.Env):
         slippage_price: float = 0.02,
         commission_per_trade: float = 0.0,
         holding_penalty: float = 0.0,
+        flat_penalty: float = 0.0,
         reward_mtm_weight: float = 0.01,
         giveback_penalty: float = 0.02,
         loss_penalty: float = 0.20,
@@ -73,6 +74,7 @@ class BracketTradingEnv(gym.Env):
         self.slippage_price = float(slippage_price)
         self.commission_per_trade = float(commission_per_trade)
         self.holding_penalty = float(holding_penalty)
+        self.flat_penalty = float(flat_penalty)
         self.reward_mtm_weight = float(reward_mtm_weight)
         self.giveback_penalty = float(giveback_penalty)
         self.loss_penalty = float(loss_penalty)
@@ -312,6 +314,11 @@ class BracketTradingEnv(gym.Env):
             reward -= self.giveback_penalty * giveback
             reward += cur_r * self.reward_mtm_weight
             reward -= self.holding_penalty
+
+        # Small opportunity cost for staying flat, so the agent cannot settle on
+        # "never trade" (reward 0 always) as a safe local optimum.
+        if self.position.direction == 0:
+            reward -= self.flat_penalty
 
         self.history.append({
             "time": self._current_time(),
