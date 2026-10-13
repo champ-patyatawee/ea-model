@@ -1,0 +1,38 @@
+{
+  "expert": "FiboAdaptiveEA_v7.2",
+  "prefix": "dc",
+  "deposit": 100,
+  "model": 4,
+  "months": [
+    ["Jul", "2026.07.01", "2026.08.01"],
+    ["Aug", "2026.08.01", "2026.09.01"],
+    ["Sep", "2026.09.01", "2026.10.01"],
+    ["Oct", "2026.10.01", "2026.10.12"]
+  ],
+  "_note": "Tune the winning deepcont config. Every job lists ALL varying inputs.",
+  "base": {
+    "InpFadeMode": "true",
+    "InpTrueMirror": "true",
+    "InpUsePartial": "false",
+    "InpUseBreakEven": "false",
+    "InpUseTrailing": "false",
+    "InpUseTimeExit": "true",
+    "InpMaxHoldMinutes": "180",
+    "InpTP_R": "2.5",
+    "InpDailyStopPct": "0",
+    "InpTPMode": "2",
+    "InpTPExtMult": "0.618",
+    "InpTPExtMinR": "1.5",
+    "InpTPExtMaxR": "0",
+    "InpUseHTFFibo": "false",
+    "InpDirByDepth": "1"
+  },
+  "variants": [
+    {"tag": "dc"},
+    {"InpTP_R": "2.0", "tag": "tp20"},
+    {"InpTP_R": "2.25", "tag": "tp225"},
+    {"InpTP_R": "2.75", "tag": "tp275"},
+    {"InpTP_R": "3.0", "tag": "tp30"},
+    {"InpUseTimeExit": "false", "tag": "notimeexit"}
+  ]
+}

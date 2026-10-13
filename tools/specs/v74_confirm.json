@@ -1,0 +1,10 @@
+[
+  {"label": "v74_Jul", "expert": "FiboAdaptiveEA_v7.4", "from": "2026.07.01", "to": "2026.08.01", "deposit": 100, "model": 4,
+   "inputs": {"InpDirByDepth": "1", "InpTP_R": "2.5", "InpUseVolGate": "false", "InpDeepEffBelow": "0.40", "InpFadeMode": "true", "InpTrueMirror": "true", "InpUsePartial": "false", "InpUseBreakEven": "false", "InpUseTrailing": "false", "InpUseTimeExit": "true", "InpMaxHoldMinutes": "180", "InpDailyStopPct": "0", "InpTPMode": "2", "InpUseHTFTrendFilter": "false", "InpUseRegimeFilter": "false"}},
+  {"label": "v74_Aug", "expert": "FiboAdaptiveEA_v7.4", "from": "2026.08.01", "to": "2026.09.01", "deposit": 100, "model": 4,
+   "inputs": {"InpDirByDepth": "1", "InpTP_R": "2.5", "InpUseVolGate": "false", "InpDeepEffBelow": "0.40", "InpFadeMode": "true", "InpTrueMirror": "true", "InpUsePartial": "false", "InpUseBreakEven": "false", "InpUseTrailing": "false", "InpUseTimeExit": "true", "InpMaxHoldMinutes": "180", "InpDailyStopPct": "0", "InpTPMode": "2", "InpUseHTFTrendFilter": "false", "InpUseRegimeFilter": "false"}},
+  {"label": "v74_Sep", "expert": "FiboAdaptiveEA_v7.4", "from": "2026.09.01", "to": "2026.10.01", "deposit": 100, "model": 4,
+   "inputs": {"InpDirByDepth": "1", "InpTP_R": "2.5", "InpUseVolGate": "false", "InpDeepEffBelow": "0.40", "InpFadeMode": "true", "InpTrueMirror": "true", "InpUsePartial": "false", "InpUseBreakEven": "false", "InpUseTrailing": "false", "InpUseTimeExit": "true", "InpMaxHoldMinutes": "180", "InpDailyStopPct": "0", "InpTPMode": "2", "InpUseHTFTrendFilter": "false", "InpUseRegimeFilter": "false"}},
+  {"label": "v74_Oct", "expert": "FiboAdaptiveEA_v7.4", "from": "2026.10.01", "to": "2026.10.12", "deposit": 100, "model": 4,
+   "inputs": {"InpDirByDepth": "1", "InpTP_R": "2.5", "InpUseVolGate": "false", "InpDeepEffBelow": "0.40", "InpFadeMode": "true", "InpTrueMirror": "true", "InpUsePartial": "false", "InpUseBreakEven": "false", "InpUseTrailing": "false", "InpUseTimeExit": "true", "InpMaxHoldMinutes": "180", "InpDailyStopPct": "0", "InpTPMode": "2", "InpUseHTFTrendFilter": "false", "InpUseRegimeFilter": "false"}}
+]

@@ -1,0 +1,36 @@
+{
+  "expert": "FiboAdaptiveEA_v7.6",
+  "prefix": "cap",
+  "deposit": 100,
+  "model": 4,
+  "months": [
+    ["Jul", "2026.07.01", "2026.08.01"],
+    ["Aug", "2026.08.01", "2026.09.01"],
+    ["Sep", "2026.09.01", "2026.10.01"],
+    ["Oct", "2026.10.01", "2026.10.12"]
+  ],
+  "base": {
+    "InpFadeMode": "true",
+    "InpTrueMirror": "true",
+    "InpDirByDepth": "1",
+    "InpTPMode": "2",
+    "InpTP_R": "1.5",
+    "InpUsePartial": "true",
+    "InpUseBreakEven": "true",
+    "InpUseTrailing": "true",
+    "InpUseTimeExit": "true",
+    "InpMaxHoldMinutes": "180",
+    "InpDailyStopPct": "0",
+    "InpUseVolGate": "true",
+    "InpDeepEffBelow": "0.50",
+    "InpUseHTFFibo": "false",
+    "InpTPByDir": "0",
+    "InpUseHTFTrendFilter": "false",
+    "InpUseRegimeFilter": "false"
+  },
+  "variants": [
+    {"tag": "cap3", "InpMaxEntriesPerDirPerDay": "3", "InpMaxTradesPerDay": "0"},
+    {"tag": "cap2", "InpMaxEntriesPerDirPerDay": "2", "InpMaxTradesPerDay": "0"},
+    {"tag": "cap2tot4", "InpMaxEntriesPerDirPerDay": "2", "InpMaxTradesPerDay": "4"}
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "expert": "FiboAdaptiveEA_v7.5",
+  "prefix": "dc",
+  "deposit": 100,
+  "model": 2,
+  "months": [
+    ["2025-11", "2025.11.01", "2025.12.01"],
+    ["2025-12", "2025.12.01", "2026.01.01"],
+    ["2026-02", "2026.02.01", "2026.03.01"]
+  ],
+  "base": {
+    "InpFadeMode": "true",
+    "InpTrueMirror": "true",
+    "InpUseTimeExit": "true",
+    "InpMaxHoldMinutes": "180",
+    "InpDailyStopPct": "0",
+    "InpTPMode": "2",
+    "InpUseHTFFibo": "false",
+    "InpTPByDir": "0",
+    "InpUseHTFTrendFilter": "false",
+    "InpUseRegimeFilter": "false"
+  },
+  "variants": [
+    {"tag": "oldall", "InpDirByDepth": "0", "InpTP_R": "1.5",
+     "InpUsePartial": "true", "InpUseBreakEven": "true", "InpUseTrailing": "true",
+     "InpUseVolGate": "true", "InpDeepEffBelow": "0.50"},
+    {"tag": "payoffonly", "InpDirByDepth": "0", "InpTP_R": "2.5",
+     "InpUsePartial": "false", "InpUseBreakEven": "false", "InpUseTrailing": "false",
+     "InpUseVolGate": "true", "InpDeepEffBelow": "0.50"},
+    {"tag": "payoff_dd1", "InpDirByDepth": "1", "InpTP_R": "2.5",
+     "InpUsePartial": "false", "InpUseBreakEven": "false", "InpUseTrailing": "false",
+     "InpUseVolGate": "true", "InpDeepEffBelow": "0.50"},
+    {"tag": "dd1_oldexits", "InpDirByDepth": "1", "InpTP_R": "1.5",
+     "InpUsePartial": "true", "InpUseBreakEven": "true", "InpUseTrailing": "true",
+     "InpUseVolGate": "true", "InpDeepEffBelow": "0.50"},
+    {"tag": "v75full", "InpDirByDepth": "1", "InpTP_R": "2.5",
+     "InpUsePartial": "false", "InpUseBreakEven": "false", "InpUseTrailing": "false",
+     "InpUseVolGate": "false", "InpDeepEffBelow": "0.40"}
+  ]
+}

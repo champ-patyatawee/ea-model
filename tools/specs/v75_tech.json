@@ -1,0 +1,38 @@
+{
+  "expert": "FiboAdaptiveEA_v7.5",
+  "prefix": "v75",
+  "deposit": 100,
+  "model": 4,
+  "months": [
+    ["Jul", "2026.07.01", "2026.08.01"],
+    ["Aug", "2026.08.01", "2026.09.01"],
+    ["Sep", "2026.09.01", "2026.10.01"],
+    ["Oct", "2026.10.01", "2026.10.12"]
+  ],
+  "base": {
+    "InpFadeMode": "true",
+    "InpTrueMirror": "true",
+    "InpDirByDepth": "1",
+    "InpTP_R": "2.5",
+    "InpUseVolGate": "false",
+    "InpDeepEffBelow": "0.40",
+    "InpUsePartial": "false",
+    "InpUseBreakEven": "false",
+    "InpUseTrailing": "false",
+    "InpUseTimeExit": "true",
+    "InpMaxHoldMinutes": "180",
+    "InpDailyStopPct": "0",
+    "InpTPMode": "2",
+    "InpUseHTFTrendFilter": "false",
+    "InpUseRegimeFilter": "false",
+    "InpUseHTFFibo": "false",
+    "InpTPByDir": "0"
+  },
+  "variants": [
+    {"tag": "ctrl"},
+    {"InpUseHTFFibo": "true", "tag": "h1fib_50_786"},
+    {"InpUseHTFFibo": "true", "InpH1FibMin": "0.618", "tag": "h1fib_618_786"},
+    {"InpTPByDir": "1", "tag": "tpdir1_cont_ext"},
+    {"InpTPByDir": "2", "tag": "tpdir2_fade_ext"}
+  ]
+}

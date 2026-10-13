@@ -1,0 +1,38 @@
+{
+  "expert": "FiboAdaptiveEA_v7.2",
+  "prefix": "v72",
+  "deposit": 100,
+  "model": 4,
+  "months": [
+    ["Jul", "2026.07.01", "2026.08.01"],
+    ["Aug", "2026.08.01", "2026.09.01"],
+    ["Sep", "2026.09.01", "2026.10.01"],
+    ["Oct", "2026.10.01", "2026.10.12"]
+  ],
+  "_note": "Every job lists ALL varying inputs (MT5 tester carries over unlisted ones).",
+  "base": {
+    "InpFadeMode": "true",
+    "InpTrueMirror": "true",
+    "InpUsePartial": "false",
+    "InpUseBreakEven": "false",
+    "InpUseTrailing": "false",
+    "InpUseTimeExit": "true",
+    "InpMaxHoldMinutes": "180",
+    "InpTP_R": "2.5",
+    "InpDailyStopPct": "0",
+    "InpTPMode": "2",
+    "InpTPExtMult": "0.618",
+    "InpTPExtMinR": "1.5",
+    "InpTPExtMaxR": "0",
+    "InpUseHTFFibo": "false",
+    "InpDirByDepth": "0"
+  },
+  "variants": [
+    {"tag": "base"},
+    {"InpDirByDepth": "1", "tag": "deepcont"},
+    {"InpDirByDepth": "2", "tag": "deepfade"},
+    {"InpTPMode": "3", "InpTPExtMult": "0.272", "tag": "ext1272"},
+    {"InpTPMode": "3", "InpTPExtMult": "0.618", "tag": "ext1618"},
+    {"InpTPMode": "3", "InpTPExtMult": "0.786", "tag": "ext1786"}
+  ]
+}

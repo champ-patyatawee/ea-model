@@ -1,0 +1,49 @@
+{
+  "prefix": "rb",
+  "deposit": 100,
+  "model": 2,
+  "months": [
+    ["2025-11", "2025.11.01", "2025.12.01"],
+    ["2025-12", "2025.12.01", "2026.01.01"],
+    ["2026-01", "2026.01.01", "2026.02.01"],
+    ["2026-02", "2026.02.01", "2026.03.01"],
+    ["2026-03", "2026.03.01", "2026.04.01"],
+    ["2026-06", "2026.06.01", "2026.07.01"]
+  ],
+  "base": {
+    "InpFadeMode": "true",
+    "InpTrueMirror": "true"
+  },
+  "variants": [
+    {
+      "tag": "v75best",
+      "expert": "FiboAdaptiveEA_v7.5",
+      "InpDirByDepth": "1",
+      "InpTP_R": "2.5",
+      "InpUseVolGate": "false",
+      "InpDeepEffBelow": "0.40",
+      "InpUsePartial": "false",
+      "InpUseBreakEven": "false",
+      "InpUseTrailing": "false",
+      "InpUseTimeExit": "true",
+      "InpMaxHoldMinutes": "180",
+      "InpDailyStopPct": "0",
+      "InpTPMode": "2",
+      "InpUseHTFFibo": "false",
+      "InpTPByDir": "0"
+    },
+    {
+      "tag": "v62base",
+      "expert": "FiboAdaptiveEA_v6.2",
+      "InpTP_R": "1.50",
+      "InpUseVolGate": "true",
+      "InpDeepEffBelow": "0.50",
+      "InpUsePartial": "true",
+      "InpUseBreakEven": "true",
+      "InpUseTrailing": "true",
+      "InpUseTimeExit": "true",
+      "InpMaxHoldMinutes": "180",
+      "InpTPMode": "2"
+    }
+  ]
+}

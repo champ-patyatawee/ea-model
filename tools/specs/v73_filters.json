@@ -1,0 +1,39 @@
+{
+  "expert": "FiboAdaptiveEA_v7.3",
+  "prefix": "f",
+  "deposit": 100,
+  "model": 4,
+  "months": [
+    ["Jul", "2026.07.01", "2026.08.01"],
+    ["Aug", "2026.08.01", "2026.09.01"],
+    ["Sep", "2026.09.01", "2026.10.01"],
+    ["Oct", "2026.10.01", "2026.10.12"]
+  ],
+  "_note": "Robustness sweep on top of the v7.3 winner (DirByDepth=1, TP 2.5R). All varying inputs listed.",
+  "base": {
+    "InpDirByDepth": "1",
+    "InpTP_R": "2.5",
+    "InpFadeMode": "true",
+    "InpTrueMirror": "true",
+    "InpUsePartial": "false",
+    "InpUseBreakEven": "false",
+    "InpUseTrailing": "false",
+    "InpUseTimeExit": "true",
+    "InpMaxHoldMinutes": "180",
+    "InpDailyStopPct": "0",
+    "InpTPMode": "2",
+    "InpUseHTFTrendFilter": "false",
+    "InpUseRegimeFilter": "false",
+    "InpUseVolGate": "true",
+    "InpDeepEffBelow": "0.50",
+    "InpUseDeepProfile": "true"
+  },
+  "variants": [
+    {"tag": "ctrl"},
+    {"InpUseHTFTrendFilter": "true", "tag": "htftrend"},
+    {"InpUseRegimeFilter": "true", "tag": "regime"},
+    {"InpDeepEffBelow": "0.40", "tag": "eff40"},
+    {"InpDeepEffBelow": "0.60", "tag": "eff60"},
+    {"InpUseVolGate": "false", "tag": "novol"}
+  ]
+}

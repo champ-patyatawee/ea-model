@@ -1,0 +1,41 @@
+{
+  "expert": "FiboAdaptiveEA_v7.1",
+  "prefix": "v71",
+  "deposit": 100,
+  "model": 4,
+  "months": [
+    ["Jul", "2026.07.01", "2026.08.01"],
+    ["Aug", "2026.08.01", "2026.09.01"],
+    ["Sep", "2026.09.01", "2026.10.01"],
+    ["Oct", "2026.10.01", "2026.10.12"]
+  ],
+  "_note": "MT5 tester carries over the last-used value for any input NOT listed in [TesterInputs], so base must list EVERY varying input. Self-contained jobs only.",
+  "base": {
+    "InpFadeMode": "true",
+    "InpTrueMirror": "true",
+    "InpUsePartial": "false",
+    "InpUseBreakEven": "false",
+    "InpUseTrailing": "false",
+    "InpUseTimeExit": "true",
+    "InpMaxHoldMinutes": "180",
+    "InpTP_R": "2.5",
+    "InpDailyStopPct": "0",
+    "InpTPMode": "2",
+    "InpTPExtMult": "0.618",
+    "InpTPExtMinR": "1.5",
+    "InpTPExtMaxR": "0",
+    "InpUseHTFFibo": "false",
+    "InpH1FiboBars": "120",
+    "InpH1FibMin": "0.5",
+    "InpH1FibMax": "0.786",
+    "InpDirByDepth": "0"
+  },
+  "variants": [
+    {"tag": "base"},
+    {"InpTPMode": "3", "InpTPExtMult": "0.618", "tag": "fibext618"},
+    {"InpUseHTFFibo": "true", "tag": "htf"},
+    {"InpDirByDepth": "1", "tag": "deepcont"},
+    {"InpDirByDepth": "2", "tag": "deepfade"},
+    {"InpFadeMode": "false", "tag": "continue"}
+  ]
+}

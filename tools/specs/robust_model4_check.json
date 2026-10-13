@@ -1,0 +1,31 @@
+{
+  "expert": "FiboAdaptiveEA_v7.6",
+  "prefix": "m4",
+  "deposit": 100,
+  "model": 4,
+  "months": [
+    ["2025-12", "2025.12.01", "2026.01.01"],
+    ["2026-02", "2026.02.01", "2026.03.01"]
+  ],
+  "_note": "Same two earlier months but with Model=4 (real ticks / every tick). Before 2026.07.01 there are no real tick files, so MT5 falls back to generated ticks - this checks that the v7.6-vs-payoff-fix ranking is not an artefact of the Model=2 OHLC model.",
+  "base": {
+    "InpFadeMode": "true",
+    "InpTrueMirror": "true",
+    "InpTPMode": "2",
+    "InpUseTimeExit": "true",
+    "InpMaxHoldMinutes": "180",
+    "InpDailyStopPct": "0",
+    "InpUseHTFFibo": "false",
+    "InpTPByDir": "0",
+    "InpUseHTFTrendFilter": "false",
+    "InpUseRegimeFilter": "false"
+  },
+  "variants": [
+    {"tag": "v76robust", "InpDirByDepth": "1", "InpTP_R": "1.5",
+     "InpUsePartial": "true", "InpUseBreakEven": "true", "InpUseTrailing": "true",
+     "InpUseVolGate": "true", "InpDeepEffBelow": "0.50"},
+    {"tag": "v75payoff", "InpDirByDepth": "1", "InpTP_R": "2.5",
+     "InpUsePartial": "false", "InpUseBreakEven": "false", "InpUseTrailing": "false",
+     "InpUseVolGate": "false", "InpDeepEffBelow": "0.40"}
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "prefix": "k1k",
+  "deposit": 1000,
+  "model": 2,
+  "months": [
+    ["2025-10", "2025.10.01", "2025.11.01"],
+    ["2025-11", "2025.11.01", "2025.12.01"],
+    ["2025-12", "2025.12.01", "2026.01.01"],
+    ["2026-01", "2026.01.01", "2026.02.01"],
+    ["2026-02", "2026.02.01", "2026.03.01"],
+    ["2026-03", "2026.03.01", "2026.04.01"],
+    ["2026-04", "2026.04.01", "2026.05.01"],
+    ["2026-05", "2026.05.01", "2026.06.01"],
+    ["2026-06", "2026.06.01", "2026.07.01"],
+    ["2026-07", "2026.07.01", "2026.08.01"],
+    ["2026-08", "2026.08.01", "2026.09.01"],
+    ["2026-09", "2026.09.01", "2026.10.01"]
+  ],
+  "_note": "Deposit 1000 instead of 100. The lot is FIXED at 0.02, so the dollar risk per trade is unchanged (~$15-25) but it is now only 1.5-2.5% of equity instead of 15-25%. Same 12 months, same Model=2 as the $100 run so the two are directly comparable.",
+  "base": {
+    "InpFadeMode": "true",
+    "InpTrueMirror": "true",
+    "InpDirByDepth": "1",
+    "InpTPMode": "2",
+    "InpTP_R": "1.5",
+    "InpUsePartial": "true",
+    "InpUseBreakEven": "true",
+    "InpUseTrailing": "true",
+    "InpUseTimeExit": "true",
+    "InpMaxHoldMinutes": "180",
+    "InpDailyStopPct": "0",
+    "InpUseVolGate": "true",
+    "InpDeepEffBelow": "0.50",
+    "InpUseHTFFibo": "false",
+    "InpTPByDir": "0",
+    "InpUseHTFTrendFilter": "false",
+    "InpUseRegimeFilter": "false",
+    "InpEntryFibMin": "0.382",
+    "InpMaxEntriesPerDirPerDay": "3",
+    "InpMaxTradesPerDay": "0"
+  },
+  "variants": [
+    {"tag": "v76", "expert": "FiboAdaptiveEA_v7.6"},
+    {"tag": "v77", "expert": "FiboAdaptiveEA_v7.7",
+     "InpAdaptiveExits": "3", "InpAdaptiveExitThr": "0.50", "InpAdaptiveHighIsPayoff": "true",
+     "InpTP_R_Payoff": "2.5"}
+  ]
+}

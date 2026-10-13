@@ -1,0 +1,43 @@
+{
+  "expert": "FiboAdaptiveEA_v7.7",
+  "prefix": "v77",
+  "deposit": 100,
+  "model": 4,
+  "months": [
+    ["Jul", "2026.07.01", "2026.08.01"],
+    ["Aug", "2026.08.01", "2026.09.01"],
+    ["Sep", "2026.09.01", "2026.10.01"],
+    ["Oct", "2026.10.01", "2026.10.12"]
+  ],
+  "_note": "v7.6 defaults + the v7.7 regime-adaptive exit ladder switch. ctrl must reproduce v7.6 exactly.",
+  "base": {
+    "InpFadeMode": "true",
+    "InpTrueMirror": "true",
+    "InpDirByDepth": "1",
+    "InpTPMode": "2",
+    "InpTP_R": "1.5",
+    "InpUsePartial": "true",
+    "InpUseBreakEven": "true",
+    "InpUseTrailing": "true",
+    "InpUseTimeExit": "true",
+    "InpMaxHoldMinutes": "180",
+    "InpDailyStopPct": "0",
+    "InpUseVolGate": "true",
+    "InpDeepEffBelow": "0.50",
+    "InpUseHTFFibo": "false",
+    "InpTPByDir": "0",
+    "InpUseHTFTrendFilter": "false",
+    "InpUseRegimeFilter": "false",
+    "InpAdaptiveExits": "0",
+    "InpAdaptiveExitThr": "1.0",
+    "InpAdaptiveHighIsPayoff": "true",
+    "InpTP_R_Payoff": "2.5"
+  },
+  "variants": [
+    {"tag": "ctrl"},
+    {"InpAdaptiveExits": "1", "InpAdaptiveExitThr": "1.00", "InpAdaptiveHighIsPayoff": "true", "tag": "a1_hi"},
+    {"InpAdaptiveExits": "1", "InpAdaptiveExitThr": "1.00", "InpAdaptiveHighIsPayoff": "false", "tag": "a1_lo"},
+    {"InpAdaptiveExits": "2", "InpAdaptiveExitThr": "0.55", "InpAdaptiveHighIsPayoff": "true", "tag": "a2_hi"},
+    {"InpAdaptiveExits": "3", "InpAdaptiveExitThr": "0.50", "InpAdaptiveHighIsPayoff": "true", "tag": "a3_hi"}
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "prefix": "k1kr",
+  "deposit": 1000,
+  "model": 4,
+  "months": [
+    ["Jul", "2026.07.01", "2026.08.01"],
+    ["Aug", "2026.08.01", "2026.09.01"],
+    ["Sep", "2026.09.01", "2026.10.01"],
+    ["Oct", "2026.10.01", "2026.10.12"]
+  ],
+  "_note": "Same as the $100 real-tick run but with a $1000 deposit, for v7.6 and v7.7.",
+  "base": {
+    "InpFadeMode": "true",
+    "InpTrueMirror": "true",
+    "InpDirByDepth": "1",
+    "InpTPMode": "2",
+    "InpTP_R": "1.5",
+    "InpUsePartial": "true",
+    "InpUseBreakEven": "true",
+    "InpUseTrailing": "true",
+    "InpUseTimeExit": "true",
+    "InpMaxHoldMinutes": "180",
+    "InpDailyStopPct": "0",
+    "InpUseVolGate": "true",
+    "InpDeepEffBelow": "0.50",
+    "InpUseHTFFibo": "false",
+    "InpTPByDir": "0",
+    "InpUseHTFTrendFilter": "false",
+    "InpUseRegimeFilter": "false",
+    "InpEntryFibMin": "0.382"
+  },
+  "variants": [
+    {"tag": "v76", "expert": "FiboAdaptiveEA_v7.6"},
+    {"tag": "v77", "expert": "FiboAdaptiveEA_v7.7",
+     "InpAdaptiveExits": "3", "InpAdaptiveExitThr": "0.50", "InpAdaptiveHighIsPayoff": "true",
+     "InpTP_R_Payoff": "2.5"}
+  ]
+}

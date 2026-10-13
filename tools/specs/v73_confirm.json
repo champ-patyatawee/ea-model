@@ -1,0 +1,10 @@
+[
+  {"label": "v73_Jul", "expert": "FiboAdaptiveEA_v7.3", "from": "2026.07.01", "to": "2026.08.01", "deposit": 100, "model": 4,
+   "inputs": {"InpDirByDepth": "1", "InpTP_R": "2.5", "InpFadeMode": "true", "InpTrueMirror": "true", "InpUsePartial": "false", "InpUseBreakEven": "false", "InpUseTrailing": "false", "InpDailyStopPct": "0", "InpTPMode": "2"}},
+  {"label": "v73_Aug", "expert": "FiboAdaptiveEA_v7.3", "from": "2026.08.01", "to": "2026.09.01", "deposit": 100, "model": 4,
+   "inputs": {"InpDirByDepth": "1", "InpTP_R": "2.5", "InpFadeMode": "true", "InpTrueMirror": "true", "InpUsePartial": "false", "InpUseBreakEven": "false", "InpUseTrailing": "false", "InpDailyStopPct": "0", "InpTPMode": "2"}},
+  {"label": "v73_Sep", "expert": "FiboAdaptiveEA_v7.3", "from": "2026.09.01", "to": "2026.10.01", "deposit": 100, "model": 4,
+   "inputs": {"InpDirByDepth": "1", "InpTP_R": "2.5", "InpFadeMode": "true", "InpTrueMirror": "true", "InpUsePartial": "false", "InpUseBreakEven": "false", "InpUseTrailing": "false", "InpDailyStopPct": "0", "InpTPMode": "2"}},
+  {"label": "v73_Oct", "expert": "FiboAdaptiveEA_v7.3", "from": "2026.10.01", "to": "2026.10.12", "deposit": 100, "model": 4,
+   "inputs": {"InpDirByDepth": "1", "InpTP_R": "2.5", "InpFadeMode": "true", "InpTrueMirror": "true", "InpUsePartial": "false", "InpUseBreakEven": "false", "InpUseTrailing": "false", "InpDailyStopPct": "0", "InpTPMode": "2"}}
+]
