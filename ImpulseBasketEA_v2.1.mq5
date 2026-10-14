@@ -52,7 +52,7 @@
 //--- entry geometry -------------------------------------------------
 input double InpImpulseRangeATR  = 1.5;
 //--- entry engine ---------------------------------------------------
-input int    InpEntryMode       = 0;     // 0 = impulse signal | 1 = price step (with move) | 2 = price step (against move)
+input int    InpEntryMode       = 0;     // 0 = impulse signal | 1 = price step (with move) | 2 = price step (against move) | 3 = flip (one position, follow the move)
 input double InpGridStepUSD     = 1.00;  // price distance in $/oz that triggers the next entry
 input bool   InpGridFillOnBar   = true;  // only fill a new grid level on a new M5 bar (else every tick)
 input double InpImpulseBodyRatio = 0.50;
@@ -119,6 +119,8 @@ int    g_fh = INVALID_HANDLE, g_cfh = INVALID_HANDLE;
 double g_peakPL = 0.0;
 double g_gridAnchor = 0.0;      // last price at which a grid level was filled
 int    g_lastGridBar = 0;       // bar on which the last grid level was filled
+double g_ref = 0.0;             // flip mode: ratchet reference price
+int    g_flips = 0;             // flip mode: number of reversals
 double g_spreadSum = 0.0, g_spreadMin = 1e9, g_spreadMax = 0.0;
 long   g_spreadN = 0;
 
@@ -186,6 +188,8 @@ void OnDeinit(const int reason)
       if(g_spreadN > 0)
          PrintFormat("IBE SPREAD n=%d mean=%.4f min=%.4f max=%.4f (price units)",
                      (int)g_spreadN, g_spreadSum / g_spreadN, g_spreadMin, g_spreadMax);
+      if(InpEntryMode == 3)
+         PrintFormat("IBE FLIP entries=%d reversals=%d step=%.2f", g_dayEntries, g_flips, InpGridStepUSD);
       if(g_cfh != INVALID_HANDLE)
          FileWriteString(g_cfh, StringFormat("%s,SUMMARY,,0,%.2f,0.0,%d,0.0,%.2f,0\n",
                                              TimeToString(TimeCurrent(), TIME_DATE | TIME_MINUTES),
@@ -316,7 +320,7 @@ void OnTick()
    // "เปิดไม้ตามราคา": a new position every InpGridStepUSD of price travel,
    // with no reference to candles. Mode 1 adds in the direction of the move,
    // mode 2 adds against it (the classic recovery grid).
-   if(InpEntryMode != 0)
+   if(InpEntryMode == 1 || InpEntryMode == 2)
    {
       bool fill = (!InpGridFillOnBar || barTime != g_lastGridBar);
       if(fill)
@@ -356,6 +360,66 @@ void OnTick()
             }
          }
          g_lastGridBar = barTime;
+      }
+   }
+
+   // ---------------- flip engine (InpEntryMode 3) ------------------------
+   // "ราคาวิ่งขึ้นก็เปิดขึ้น วิ่งลงก็เปิดลง": exactly ONE position is held at
+   // all times; the reference ratchets with the trend, and when price retraces
+   // InpGridStepUSD against it the position is closed and reversed. No grid, no
+   // averaging, no hedge -- the opposite of mode 1.
+   if(InpEntryMode == 3)
+   {
+      double fask = SymbolInfoDouble(g_sym, SYMBOL_ASK);
+      double fbid = SymbolInfoDouble(g_sym, SYMBOL_BID);
+      int fcount = 0; double fnet = 0.0, foz = 0.0;
+      double fpl = GroupState(fcount, fnet, foz);
+
+      if(g_ref <= 0.0) g_ref = fbid;
+
+      if(fcount == 0)
+      {
+         if(fbid - g_ref >= InpGridStepUSD && InpAllowLong)
+         {
+            int wasFlat = 1;
+            OpenTrade(1, NormLot(InpLot), 0.0, 0, 0.0, 0.0);
+            g_ref = fbid; g_dayEntries++; g_flips++;
+            if(wasFlat) { g_groupOpenBar = barTime; g_peakPL = 0.0; }
+         }
+         else if(g_ref - fbid >= InpGridStepUSD && InpAllowShort)
+         {
+            OpenTrade(-1, NormLot(InpLot), 0.0, 0, 0.0, 0.0);
+            g_ref = fbid; g_dayEntries++; g_flips++;
+            g_groupOpenBar = barTime; g_peakPL = 0.0;
+         }
+      }
+      else if(fnet > 0)
+      {
+         if(fbid > g_ref) g_ref = fbid;                       // ratchet up with the trend
+         if(g_ref - fbid >= InpGridStepUSD)                   // reversal down
+         {
+            CloseAll("flip", barTime);
+            if(InpAllowShort)
+            {
+               OpenTrade(-1, NormLot(InpLot), 0.0, 0, 0.0, 0.0);
+               g_groupOpenBar = barTime; g_peakPL = 0.0;
+            }
+            g_ref = fbid; g_dayEntries++; g_flips++;
+         }
+      }
+      else if(fnet < 0)
+      {
+         if(fbid < g_ref) g_ref = fbid;                       // ratchet down with the trend
+         if(fbid - g_ref >= InpGridStepUSD)                   // reversal up
+         {
+            CloseAll("flip", barTime);
+            if(InpAllowLong)
+            {
+               OpenTrade(1, NormLot(InpLot), 0.0, 0, 0.0, 0.0);
+               g_groupOpenBar = barTime; g_peakPL = 0.0;
+            }
+            g_ref = fbid; g_dayEntries++; g_flips++;
+         }
       }
    }
 
