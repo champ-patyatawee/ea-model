@@ -1,0 +1,14 @@
+# Compiled Expert Advisors
+*.ex5
+*.ex4
+
+# MetaTrader logs / tester artifacts
+*.log
+Tester/
+*.dat
+
+# OS / editor
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.bak
