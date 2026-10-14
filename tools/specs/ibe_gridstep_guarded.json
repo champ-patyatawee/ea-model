@@ -1,0 +1,18 @@
+[
+ {"label": "fp_grid2_m2tx12", "expert": "ImpulseBasketEA_v2.1", "from": "2023.01.03", "to": "2026.10.14",
+  "deposit": 100000, "model": 2,
+  "inputs": {"InpLogFile": "fp_grid2_m2tx12.csv", "InpCycleFile": "fp_grid2_m2tx12_cyc.csv",
+             "InpEntryMode": "1", "InpGridStepUSD": "2.0", "InpGridFillOnBar": "true",
+             "InpHTF": "0", "InpAllowShort": "true", "InpSameSideOnly": "false",
+             "InpMaxPositions": "2", "InpBasketTP": "20.0", "InpTPMode": "0",
+             "InpUseTimeExit": "true", "InpMaxHoldBars": "12",
+             "InpLot": "0.02", "InpLotMode": "0", "InpLogEvery": "M5"}},
+ {"label": "d13_grid2_m2tx12", "expert": "ImpulseBasketEA_v2.1", "from": "2026.10.13", "to": "2026.10.14",
+  "deposit": 1000, "model": 4,
+  "inputs": {"InpLogFile": "d13_grid2_m2tx12.csv", "InpCycleFile": "d13_grid2_m2tx12_cyc.csv",
+             "InpEntryMode": "1", "InpGridStepUSD": "2.0", "InpGridFillOnBar": "true",
+             "InpHTF": "0", "InpAllowShort": "true", "InpSameSideOnly": "false",
+             "InpMaxPositions": "2", "InpBasketTP": "20.0", "InpTPMode": "0",
+             "InpUseTimeExit": "true", "InpMaxHoldBars": "12",
+             "InpLot": "0.02", "InpLotMode": "0", "InpLogEvery": "M5"}}
+]
