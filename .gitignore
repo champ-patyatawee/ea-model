@@ -13,3 +13,4 @@ opt/rl_gold/live/*.jsonl
 opt/rl_gold/live/runner*.out
 id_ed25519
 id_ed25519.pub
+research/impulse-basket-evidence/*_full_period.csv

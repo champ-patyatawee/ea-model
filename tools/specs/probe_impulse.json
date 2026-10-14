@@ -1,0 +1,9 @@
+[
+  {"label": "probe_full",
+   "expert": "ImpulseProbeEA",
+   "from": "2024.01.01",
+   "to":   "2026.10.14",
+   "deposit": 1000,
+   "model": 2,
+   "inputs": {"InpFile": "impulse_probe.csv", "InpATRPeriod": "14", "InpHorizons": "32"}}
+]

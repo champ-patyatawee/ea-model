@@ -1,0 +1,18 @@
+[
+ {"tag": "long_tx4", "InpSameSideOnly": "true", "InpAllowShort": "false",
+  "InpUseTimeExit": "true", "InpMaxHoldBars": "4"},
+ {"tag": "long_tx6", "InpSameSideOnly": "true", "InpAllowShort": "false",
+  "InpUseTimeExit": "true", "InpMaxHoldBars": "6"},
+ {"tag": "long_tx12", "InpSameSideOnly": "true", "InpAllowShort": "false",
+  "InpUseTimeExit": "true", "InpMaxHoldBars": "12"},
+ {"tag": "long_tx24", "InpSameSideOnly": "true", "InpAllowShort": "false",
+  "InpUseTimeExit": "true", "InpMaxHoldBars": "24"},
+ {"tag": "long_max2_tx12", "InpSameSideOnly": "true", "InpAllowShort": "false",
+  "InpUseTimeExit": "true", "InpMaxHoldBars": "12", "InpMaxPositions": "2"},
+ {"tag": "long_max4_tx12", "InpSameSideOnly": "true", "InpAllowShort": "false",
+  "InpUseTimeExit": "true", "InpMaxHoldBars": "12", "InpMaxPositions": "4"},
+ {"tag": "long_flat23", "InpSameSideOnly": "true", "InpAllowShort": "false", "InpFlatHour": "23"},
+ {"tag": "long_htf2", "InpSameSideOnly": "true", "InpAllowShort": "false", "InpHTF": "2"},
+ {"tag": "same_tx6", "InpSameSideOnly": "true", "InpUseTimeExit": "true", "InpMaxHoldBars": "6"},
+ {"tag": "same_tx8", "InpSameSideOnly": "true", "InpUseTimeExit": "true", "InpMaxHoldBars": "8"}
+]

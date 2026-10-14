@@ -1,0 +1,9 @@
+[
+  {"label": "ibe_smoke_aug26",
+   "expert": "ImpulseBasketEA_v1.0",
+   "from": "2026.08.01",
+   "to":   "2026.09.01",
+   "deposit": 1000,
+   "model": 2,
+   "inputs": {"InpLogFile": "ibe_smoke_aug26.csv"}}
+]

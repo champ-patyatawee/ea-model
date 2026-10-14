@@ -140,6 +140,11 @@ def run_jobs(jobs, wait=True):
     for j in jobs:
         lines.append("echo JOB_START %s $(date +%%H:%%M:%%S)" % j["label"])
         lines.append("run_one \"%s\" \"%s\"" % (j["_ini_name"], j["label"]))
+        # The tester wipes the agent's MQL5/Files sandbox when the next job
+        # starts, so anything the EA wrote has to be rescued now.
+        lines.append("mkdir -p %s/out" % CONTAINER_TMP)
+        lines.append("cp -f \"%s/Tester/Agent-127.0.0.1-3002/MQL5/Files/\"*.csv %s/out/ 2>/dev/null"
+                     % (MTR, CONTAINER_TMP))
         lines.append("echo JOB_END %s $(date +%%H:%%M:%%S)" % j["label"])
     lines.append("echo RUNNER_DONE $(date +%H:%M:%S)")
     script = "\n".join(lines) + "\n"
@@ -289,9 +294,13 @@ def main():
     cmd = sys.argv[1]
     if cmd == "run":
         jobs = expand_spec(json.load(open(sys.argv[2])))
+        bg = "--bg" in sys.argv[3:]
         print("%d jobs: %s" % (len(jobs), " ".join(j["label"] for j in jobs)))
         t0 = time.time()
-        r = run_jobs(jobs)
+        r = run_jobs(jobs, wait=not bg)
+        if bg:
+            print("started in background: %s" % (r.stdout or r.stderr).strip()[:200])
+            return
         print(r.stdout[-4000:])
         if r.returncode != 0:
             print(r.stderr[-2000:])

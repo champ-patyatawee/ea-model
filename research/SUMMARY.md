@@ -1,5 +1,23 @@
 # FiboAdaptiveEA — research → develop → backtest summary (Jul–Oct 2026)
 
+> **2026-10-14 — new, separate line of work: `ImpulseBasketEA` (impulse-candle basket).**
+> The brief changed: XAUUSDm M5, $1,000, open frequently in both directions on impulse
+> candles, no per-trade SL, no basket stop, close the whole group at a small target, and
+> score with `EV per run = (Σ P/L − 1000 × runs that blew up) / runs`.
+> Full write-up: `research/impulse-basket.md`; reproducible recipe:
+> `skills/impulse-basket/SKILL.md`. Headline numbers:
+> * the impulse **continuation** is the real side (fade is negative at every horizon,
+>   t ≈ +2 to +3 on 267,759 M5 bars) but one impulse trade earns only 0.09–0.12 $/oz at
+>   h=4 against a measured 0.249 $/oz real spread — the entry does not pay for itself;
+> * the brief's literal two-sided basket **freezes**: 267,180 of 267,899 samples sat at
+>   8 open positions with net lot 0.00, so the group P/L could never reach the target
+>   again (`InpSameSideOnly=true` is the fix);
+> * shipped build `ImpulseBasketEA_v2.0.mq5` (long-only, one-sided groups, 8 positions,
+>   +$20 target, no stop): **EV +$198 per run with 38.5 % of runs blown up** at $1,000
+>   (1,157 rolling 21-trading-day runs, 2023.01-2026.10), tune +$184 / validate +$211;
+> * it is a **leveraged long-gold bet**, not a market-neutral edge: the short-only mirror
+>   scores −$281/run and gold rose 1830 → 4160 over the sample.
+
 Goal (from the user): build the **best** Fibonacci EA — trades best, loses least, makes most
 profit — researching Fibo techniques, developing, and backtesting months Jul–Oct 2026.
 

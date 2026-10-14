@@ -1,0 +1,14 @@
+[
+ {"label": "v20_verify", "expert": "ImpulseBasketEA_v2.0", "from": "2023.01.03", "to": "2026.10.14",
+  "deposit": 100000, "model": 2,
+  "inputs": {"InpLogFile": "v20_verify.csv", "InpCycleFile": "v20_verify_cyc.csv",
+             "InpImpulseRangeATR": "1.5", "InpImpulseBodyRatio": "0.50", "InpUseClosePos": "true",
+             "InpImpulseClosePos": "0.75", "InpDirMode": "0", "InpHTF": "2", "InpTPMode": "0",
+             "InpBasketTP": "20.0", "InpMaxPositions": "8", "InpMaxPosPerDir": "0",
+             "InpAllowLong": "true", "InpAllowShort": "false", "InpSameSideOnly": "true",
+             "InpNetCapLots": "0.0", "InpAddMinGroupPL": "-1000000", "InpUseTimeExit": "false",
+             "InpCloseBeforeWeekend": "false", "InpUseGroupTrail": "false", "InpFlatHour": "-1",
+             "InpBlockHourFrom": "-1", "InpBlockHourTo": "-1", "InpCooldownBars": "0",
+             "InpCooldownAfterClose": "0", "InpMaxEntriesPerDay": "0", "InpMinATR": "0.0",
+             "InpLot": "0.02", "InpLotMode": "0", "InpLogEvery": "M5"}}
+]

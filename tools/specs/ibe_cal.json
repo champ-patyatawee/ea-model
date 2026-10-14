@@ -1,0 +1,11 @@
+[
+ {"label": "cal_rt", "expert": "ImpulseBasketEA_v1.1", "from": "2026.07.01", "to": "2026.10.14",
+  "deposit": 100000, "model": 4,
+  "inputs": {"InpLogFile": "cal_rt.csv", "InpCycleFile": "cal_rt_cyc.csv", "InpLogEvery": "M5"}},
+ {"label": "cal_sp30", "expert": "ImpulseBasketEA_v1.1", "from": "2026.07.01", "to": "2026.10.14",
+  "deposit": 100000, "model": 2, "spread": 30,
+  "inputs": {"InpLogFile": "cal_sp30.csv", "InpCycleFile": "cal_sp30_cyc.csv", "InpLogEvery": "M5"}},
+ {"label": "cal_sp300", "expert": "ImpulseBasketEA_v1.1", "from": "2026.07.01", "to": "2026.10.14",
+  "deposit": 100000, "model": 2, "spread": 300,
+  "inputs": {"InpLogFile": "cal_sp300.csv", "InpCycleFile": "cal_sp300_cyc.csv", "InpLogEvery": "M5"}}
+]
